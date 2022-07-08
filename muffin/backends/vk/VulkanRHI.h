@@ -18,10 +18,37 @@ struct Window {
     ~Window();
 };
 
+struct Shader {
+    Shader(vkr::ShaderModule &&module);
+
+    vkr::ShaderModule module;
+};
+
+struct VertexInputState {
+    vk::PipelineVertexInputStateCreateInfo createInfo;
+};
+
+struct GraphicsPipelineCreateInfo {
+    std::shared_ptr<Shader> vertexShader;
+    std::shared_ptr<Shader> fragmentShader;
+};
+
+struct GraphicsPipeline {
+    GraphicsPipeline(vkr::Pipeline &&pipeline);
+
+    vkr::Pipeline pipeline;
+};
+
 class VulkanRHI {
 
 public:
     VulkanRHI();
+
+    Shader createShader(const std::vector<char> &code);
+
+    GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
+
+    VertexInputState createVertexInputState();
 
 private:
     Window m_window;
@@ -34,6 +61,10 @@ private:
     vkr::Device m_device;
     vkr::Queue m_graphicsQueue;
     vkr::Queue m_presentQueue;
+    vk::SurfaceFormatKHR m_surfaceFormat;
+    vk::PresentModeKHR m_presentMode;
+    vk::SurfaceCapabilitiesKHR m_caps;
+    vk::Extent2D m_extent;
     vkr::SwapchainKHR m_swapchain;
     std::vector<vk::raii::ImageView> m_swapchainImageViews;
     vkr::CommandPool m_commandPool;
@@ -41,4 +72,6 @@ private:
     vkr::DeviceMemory m_depthDeviceMemory;
     vkr::Image m_depthImage;
     vkr::ImageView m_depthImageView;
+    vkr::PipelineLayout m_pipelineLayout;
+    vkr::RenderPass m_renderPass;
 };

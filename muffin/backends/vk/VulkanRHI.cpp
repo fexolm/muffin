@@ -223,6 +223,160 @@ createSwapchainImageViews(const vkr::SwapchainKHR &swapchain, const vkr::Device 
 }
 
 
+vkr::PipelineLayout createPipelineLayout(const vkr::Device &device) {
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    vkr::PipelineLayout pipelineLayout(device, pipelineLayoutInfo);
+    return pipelineLayout;
+}
+
+vkr::RenderPass createRenderPass(const vkr::Device &device, vk::SurfaceFormatKHR surfaceFormat) {
+    vk::AttachmentDescription colorAttachment;
+    colorAttachment.format = surfaceFormat.format;
+    colorAttachment.samples = vk::SampleCountFlagBits::e1;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+    colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+    colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+    vk::AttachmentReference colorAttachmentRef;
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    vk::SubpassDescription subpass;
+    subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    vk::RenderPassCreateInfo renderPassInfo;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    vkr::RenderPass renderPass(device, renderPassInfo);
+    return renderPass;
+}
+
+GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateInfo &info) {
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
+    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertShaderStageInfo.module = *info.vertexShader->module;
+    vertShaderStageInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
+    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragShaderStageInfo.module = *info.fragmentShader->module;
+    fragShaderStageInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+    vk::PipelineVertexInputStateCreateInfo vertexInput;
+    vertexInput.vertexBindingDescriptionCount = 0;
+    vertexInput.pVertexBindingDescriptions = nullptr;
+    vertexInput.vertexAttributeDescriptionCount = 0;
+    vertexInput.pVertexBindingDescriptions = nullptr;
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
+    inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+    inputAssembly.primitiveRestartEnable = false;
+
+    vk::Viewport viewport;
+    viewport.x = 0.f;
+    viewport.y = 0.f;
+    viewport.width = m_extent.width;
+    viewport.height = m_extent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vk::Rect2D scissor;
+    scissor.offset = vk::Offset2D(0, 0);
+    scissor.extent = m_extent;
+
+    std::vector<vk::DynamicState> dynamicStates = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor,
+    };
+    vk::PipelineDynamicStateCreateInfo dynamicState;
+    dynamicState.dynamicStateCount = (uint32_t) dynamicStates.size();
+    dynamicState.pDynamicStates = dynamicStates.data();
+
+    vk::PipelineViewportStateCreateInfo viewportState;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.pScissors = &scissor;
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer;
+    rasterizer.depthClampEnable = false;
+    rasterizer.rasterizerDiscardEnable = false;
+    rasterizer.polygonMode = vk::PolygonMode::eFill;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+    rasterizer.frontFace = vk::FrontFace::eClockwise;
+    rasterizer.depthBiasEnable = false;
+    rasterizer.depthBiasConstantFactor = 0.f;
+    rasterizer.depthBiasClamp = 0.f;
+    rasterizer.depthBiasSlopeFactor = 0.f;
+
+    vk::PipelineMultisampleStateCreateInfo multisampling;
+    multisampling.sampleShadingEnable = false;
+    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    multisampling.minSampleShading = 1.f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = false;
+    multisampling.alphaToOneEnable = false;
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment;
+    colorBlendAttachment.colorWriteMask =
+            vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
+            vk::ColorComponentFlagBits::eA;
+    colorBlendAttachment.blendEnable = false;
+    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+
+    vk::PipelineColorBlendStateCreateInfo colorBlending;
+    colorBlending.logicOpEnable = false;
+    colorBlending.logicOp = vk::LogicOp::eCopy;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.0f;
+    colorBlending.blendConstants[1] = 0.0f;
+    colorBlending.blendConstants[2] = 0.0f;
+    colorBlending.blendConstants[3] = 0.0f;
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInput;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = nullptr;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = *m_pipelineLayout;
+    pipelineInfo.renderPass = *m_renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = nullptr;
+    pipelineInfo.basePipelineIndex = -1;
+
+    vkr::Pipeline pipeline(m_device, nullptr, pipelineInfo);
+
+    return GraphicsPipeline{std::move(pipeline)};
+}
+
 VulkanRHI::VulkanRHI() :
         m_context(),
         m_instance(nullptr),
@@ -237,7 +391,9 @@ VulkanRHI::VulkanRHI() :
         m_swapchainImageViews(),
         m_depthDeviceMemory(nullptr),
         m_depthImage(nullptr),
-        m_depthImageView(nullptr) {
+        m_depthImageView(nullptr),
+        m_pipelineLayout(nullptr),
+        m_renderPass(nullptr) {
 
 
     uint32_t extensionsCount;
@@ -258,20 +414,30 @@ VulkanRHI::VulkanRHI() :
     m_graphicsQueue = m_device.getQueue(m_graphicsFamilyIdx, 0);
     m_presentQueue = m_device.getQueue(m_presentFamilyIdx, 0);
 
+    m_surfaceFormat = chooseSwapSurfaceFormat(m_physicalDevice.getSurfaceFormatsKHR(*m_surface));
+    m_presentMode = chooseSwapPresentMode(m_physicalDevice.getSurfacePresentModesKHR(*m_surface));
+    m_caps = m_physicalDevice.getSurfaceCapabilitiesKHR(*m_surface);
+    m_extent = chooseSwapExtent(m_caps, m_window.width, m_window.height);
 
-    vk::SurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(m_physicalDevice.getSurfaceFormatsKHR(*m_surface));
-    vk::PresentModeKHR presentMode = chooseSwapPresentMode(m_physicalDevice.getSurfacePresentModesKHR(*m_surface));
-    vk::SurfaceCapabilitiesKHR caps = m_physicalDevice.getSurfaceCapabilitiesKHR(*m_surface);
-    vk::Extent2D extent = chooseSwapExtent(caps, m_window.width, m_window.height);
-
-    m_swapchain = createSwapchain(m_surface, m_device, surfaceFormat, presentMode, caps, extent, m_graphicsFamilyIdx,
+    m_swapchain = createSwapchain(m_surface, m_device, m_surfaceFormat, m_presentMode, m_caps, m_extent,
+                                  m_graphicsFamilyIdx,
                                   m_presentFamilyIdx);
 
-    m_swapchainImageViews = createSwapchainImageViews(m_swapchain, m_device, surfaceFormat, extent);
+    m_swapchainImageViews = createSwapchainImageViews(m_swapchain, m_device, m_surfaceFormat, m_extent);
 
+    m_pipelineLayout = createPipelineLayout(m_device);
+    m_renderPass = createRenderPass(m_device, m_surfaceFormat);
 
 //    m_commandPool = createCommandPool(m_device);
 //    m_commandBuffers = createCommandBuffers(m_device, m_commandPool);
+}
+
+Shader VulkanRHI::createShader(const std::vector<char> &code) {
+    vk::ShaderModuleCreateInfo createInfo;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = (uint32_t *) code.data();
+    vkr::ShaderModule shaderMoule(m_device, createInfo);
+    return Shader{std::move(shaderMoule)};
 }
 
 Window::Window() {
@@ -283,4 +449,12 @@ Window::Window() {
 Window::~Window() {
     SDL_DestroyWindow(window);
     SDL_Quit();
+}
+
+Shader::Shader(vkr::ShaderModule &&module) : module(std::move(module)) {
+
+}
+
+GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline) : pipeline(std::move(pipeline)) {
+
 }
