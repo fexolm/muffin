@@ -105,8 +105,10 @@ createDevice(const vkr::PhysicalDevice &physicalDevice, uint32_t graphicsFamilyI
     return device;
 }
 
-vkr::CommandPool createCommandPool(const vkr::Device &device) {
+vkr::CommandPool createCommandPool(const vkr::Device &device, uint32_t graphicsFamilyIdx) {
     vk::CommandPoolCreateInfo commandPoolCreateInfo;
+    commandPoolCreateInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
+    commandPoolCreateInfo.queueFamilyIndex = graphicsFamilyIdx;
     vkr::CommandPool commandPool(device, commandPoolCreateInfo);
     return commandPool;
 }
@@ -114,6 +116,8 @@ vkr::CommandPool createCommandPool(const vkr::Device &device) {
 vkr::CommandBuffers createCommandBuffers(const vkr::Device &device, const vkr::CommandPool &commandPool) {
     vk::CommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.commandPool = *commandPool;
+    commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+    commandBufferAllocateInfo.commandBufferCount = 1;
     vkr::CommandBuffers commandBuffers(device, commandBufferAllocateInfo);
     return commandBuffers;
 }
@@ -254,11 +258,22 @@ vkr::RenderPass createRenderPass(const vkr::Device &device, vk::SurfaceFormatKHR
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
 
+    vk::SubpassDependency dependency;
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    //dependency.srcAccessMask = 0;
+
+    dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+
     vk::RenderPassCreateInfo renderPassInfo;
     renderPassInfo.attachmentCount = 1;
     renderPassInfo.pAttachments = &colorAttachment;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
 
     vkr::RenderPass renderPass(device, renderPassInfo);
     return renderPass;
@@ -377,6 +392,27 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     return GraphicsPipeline{std::move(pipeline)};
 }
 
+std::vector<vkr::Framebuffer>
+createFramebuffers(const vkr::Device &device, const std::vector<vkr::ImageView> &imageViews,
+                   const vkr::RenderPass &renderPass, const vk::Extent2D &extent) {
+    std::vector<vkr::Framebuffer> result;
+    for (const auto &imageView: imageViews) {
+        vk::ImageView attachments[] = {
+                *imageView
+        };
+        vk::FramebufferCreateInfo framebufferInfo;
+        framebufferInfo.renderPass = *renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = extent.width;
+        framebufferInfo.height = extent.height;
+        framebufferInfo.layers = 1;
+
+        result.emplace_back(device, framebufferInfo);
+    }
+    return result;
+}
+
 VulkanRHI::VulkanRHI() :
         m_context(),
         m_instance(nullptr),
@@ -385,15 +421,12 @@ VulkanRHI::VulkanRHI() :
         m_device(nullptr),
         m_graphicsQueue(nullptr),
         m_presentQueue(nullptr),
-        m_commandPool(nullptr),
-        m_commandBuffers(nullptr),
         m_swapchain(nullptr),
         m_swapchainImageViews(),
-        m_depthDeviceMemory(nullptr),
-        m_depthImage(nullptr),
-        m_depthImageView(nullptr),
         m_pipelineLayout(nullptr),
-        m_renderPass(nullptr) {
+        m_renderPass(nullptr),
+        m_commandPool(nullptr),
+        m_commandBuffers(nullptr) {
 
 
     uint32_t extensionsCount;
@@ -427,9 +460,10 @@ VulkanRHI::VulkanRHI() :
 
     m_pipelineLayout = createPipelineLayout(m_device);
     m_renderPass = createRenderPass(m_device, m_surfaceFormat);
+    m_framebuffers = createFramebuffers(m_device, m_swapchainImageViews, m_renderPass, m_extent);
 
-//    m_commandPool = createCommandPool(m_device);
-//    m_commandBuffers = createCommandBuffers(m_device, m_commandPool);
+    m_commandPool = createCommandPool(m_device, m_graphicsFamilyIdx);
+    m_commandBuffers = createCommandBuffers(m_device, m_commandPool);
 }
 
 Shader VulkanRHI::createShader(const std::vector<char> &code) {
@@ -438,6 +472,89 @@ Shader VulkanRHI::createShader(const std::vector<char> &code) {
     createInfo.pCode = (uint32_t *) code.data();
     vkr::ShaderModule shaderMoule(m_device, createInfo);
     return Shader{std::move(shaderMoule)};
+}
+
+void VulkanRHI::drawTriangle(const GraphicsPipeline &graphicsPipeline) {
+    vk::SemaphoreCreateInfo semaphoreInfo;
+    vkr::Semaphore imageAvailableSemaphore(m_device, semaphoreInfo);
+    vkr::Semaphore renderFinishedSemaphore(m_device, semaphoreInfo);
+
+    vk::FenceCreateInfo fenceInfo;
+    fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
+
+    vkr::Fence inFlightFence(m_device, fenceInfo);
+    while (true) {
+        m_device.waitForFences({*inFlightFence}, true, UINT64_MAX);
+        m_device.resetFences({*inFlightFence});
+
+        uint32_t imgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphore, nullptr).second;
+
+        m_commandBuffers[0].reset();
+
+        vk::CommandBufferBeginInfo beginInfo;
+        beginInfo.pInheritanceInfo = nullptr;
+        m_commandBuffers[0].begin(beginInfo);
+
+        vk::RenderPassBeginInfo renderPassBeginInfo;
+        renderPassBeginInfo.renderPass = *m_renderPass;
+        renderPassBeginInfo.framebuffer = *m_framebuffers[imgIdx];
+        renderPassBeginInfo.renderArea.offset = vk::Offset2D(0, 0);
+        renderPassBeginInfo.renderArea.extent = m_extent;
+
+        vk::ClearValue clearValue(vk::ClearColorValue(std::array<float, 4>{0.f, 0.f, 0.f, 0.f}));
+        renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.pClearValues = &clearValue;
+
+        m_commandBuffers[0].beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
+
+        m_commandBuffers[0].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline.pipeline);
+
+        vk::Viewport viewport;
+        viewport.x = 0.f;
+        viewport.y = 0.f;
+        viewport.width = (float) m_extent.width;
+        viewport.height = (float) m_extent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+
+        m_commandBuffers[0].setViewport(0, viewport);
+
+        vk::Rect2D scissor;
+        scissor.offset = vk::Offset2D(0, 0);
+        scissor.extent = m_extent;
+
+        m_commandBuffers[0].setScissor(0, scissor);
+
+        m_commandBuffers[0].draw(3, 1, 0, 0);
+
+        m_commandBuffers[0].endRenderPass();
+
+        m_commandBuffers[0].end();
+
+        vk::SubmitInfo submitInfo;
+        vk::Semaphore waitSemaphores[] = {*imageAvailableSemaphore};
+        vk::CommandBuffer commandBuffers = {*m_commandBuffers[0]};
+        vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+        vk::Semaphore signalSemaphores[] = {*renderFinishedSemaphore};
+        submitInfo.setWaitSemaphores(waitSemaphores)
+                .setWaitDstStageMask(waitStages)
+                .setCommandBuffers(commandBuffers)
+                .setSignalSemaphores(signalSemaphores);
+
+        m_graphicsQueue.submit({submitInfo}, *inFlightFence);
+
+        vk::SwapchainKHR swapChains[] = {*m_swapchain};
+        vk::PresentInfoKHR presentInfo;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.swapchainCount = 1;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+        presentInfo.pResults = nullptr;
+
+        presentInfo.pImageIndices = &imgIdx;
+
+        m_graphicsQueue.presentKHR(presentInfo);
+    }
 }
 
 Window::Window() {

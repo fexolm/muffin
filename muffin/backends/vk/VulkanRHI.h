@@ -48,7 +48,7 @@ public:
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
-    VertexInputState createVertexInputState();
+    void drawTriangle(const GraphicsPipeline &graphicsPipeline);
 
 private:
     Window m_window;
@@ -67,11 +67,9 @@ private:
     vk::Extent2D m_extent;
     vkr::SwapchainKHR m_swapchain;
     std::vector<vk::raii::ImageView> m_swapchainImageViews;
-    vkr::CommandPool m_commandPool;
-    vkr::CommandBuffers m_commandBuffers;
-    vkr::DeviceMemory m_depthDeviceMemory;
-    vkr::Image m_depthImage;
-    vkr::ImageView m_depthImageView;
     vkr::PipelineLayout m_pipelineLayout;
     vkr::RenderPass m_renderPass;
+    std::vector<vkr::Framebuffer> m_framebuffers;
+    vkr::CommandPool m_commandPool;
+    vkr::CommandBuffers m_commandBuffers;
 };

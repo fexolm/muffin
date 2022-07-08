@@ -24,6 +24,8 @@ int main() {
     GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
-    rhi.createGraphicsPipeline(pipelineInfo);
+    GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
+    rhi.drawTriangle(pipeline);
+
     return 0;
 }
