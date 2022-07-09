@@ -25,7 +25,20 @@ int main() {
     pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
     GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
-    rhi.drawTriangle(pipeline);
+
+    auto commandList = rhi.createCommandList();
+    commandList.begin();
+    commandList.beginRenderPass(*pipeline.renderPass);
+    commandList.bindPipeline(pipeline);
+    commandList.setViewport();
+    commandList.setScissors();
+    commandList.draw(3, 1, 0, 0);
+    commandList.endRenderPass();
+    commandList.end();
+
+    rhi.drawTriangle(commandList);
+
+    while (true) {}
 
     return 0;
 }

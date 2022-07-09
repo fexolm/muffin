@@ -19,13 +19,9 @@ struct Window {
 };
 
 struct Shader {
-    Shader(vkr::ShaderModule &&module);
+    explicit Shader(vkr::ShaderModule &&module);
 
     vkr::ShaderModule module;
-};
-
-struct VertexInputState {
-    vk::PipelineVertexInputStateCreateInfo createInfo;
 };
 
 struct GraphicsPipelineCreateInfo {
@@ -34,9 +30,37 @@ struct GraphicsPipelineCreateInfo {
 };
 
 struct GraphicsPipeline {
-    GraphicsPipeline(vkr::Pipeline &&pipeline);
+    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout, vkr::RenderPass &&renderPass);
 
+    vkr::PipelineLayout layout;
     vkr::Pipeline pipeline;
+    vkr::RenderPass renderPass;
+
+    class VulkanRHI *rhi;
+};
+
+struct CommandList {
+    explicit CommandList(vkr::CommandBuffer &&commandBuffer, class VulkanRHI *rhi);
+
+    void begin();
+
+    void end();
+
+    void bindPipeline(const GraphicsPipeline &pipeline);
+
+    void beginRenderPass(vk::RenderPass renderPass);
+
+    void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
+
+    void setViewport();
+
+    void setScissors();
+
+    void endRenderPass();
+
+    class VulkanRHI *rhi;
+
+    vkr::CommandBuffer commandBuffer;
 };
 
 class VulkanRHI {
@@ -48,7 +72,17 @@ public:
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
-    void drawTriangle(const GraphicsPipeline &graphicsPipeline);
+    CommandList createCommandList();
+
+    void beginRenderPass(CommandList &commandList);
+
+    void drawTriangle(CommandList &commandList);
+
+    vkr::RenderPass createRenderPass();
+
+    vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass);
+
+    vk::Extent2D getExtent();
 
 private:
     Window m_window;
@@ -67,9 +101,9 @@ private:
     vk::Extent2D m_extent;
     vkr::SwapchainKHR m_swapchain;
     std::vector<vk::raii::ImageView> m_swapchainImageViews;
-    vkr::PipelineLayout m_pipelineLayout;
-    vkr::RenderPass m_renderPass;
-    std::vector<vkr::Framebuffer> m_framebuffers;
+
     vkr::CommandPool m_commandPool;
     vkr::CommandBuffers m_commandBuffers;
+
+    std::vector<vkr::Framebuffer> m_frameBuffersCache;
 };
