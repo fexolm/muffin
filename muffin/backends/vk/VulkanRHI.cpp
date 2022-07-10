@@ -238,7 +238,7 @@ vkr::PipelineLayout createPipelineLayout(const vkr::Device &device) {
     return pipelineLayout;
 }
 
-vkr::RenderPass VulkanRHI::createRenderPass() {
+vk::RenderPass VulkanRHI::createRenderPass() {
     vk::AttachmentDescription colorAttachment;
     colorAttachment.format = m_surfaceFormat.format;
     colorAttachment.samples = vk::SampleCountFlagBits::e1;
@@ -275,8 +275,8 @@ vkr::RenderPass VulkanRHI::createRenderPass() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    vkr::RenderPass renderPass(m_device, renderPassInfo);
-    return renderPass;
+    m_renderPassCache.emplace_back(m_device, renderPassInfo);
+    return *m_renderPassCache.back();
 }
 
 GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateInfo &info) {
@@ -372,7 +372,7 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 
     vkr::PipelineLayout layout = createPipelineLayout(m_device);
 
-    vkr::RenderPass renderPass = createRenderPass();
+    vk::RenderPass renderPass = createRenderPass();
 
     vk::GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.stageCount = 2;
@@ -386,14 +386,14 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = *layout;
-    pipelineInfo.renderPass = *renderPass;
+    pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = nullptr;
     pipelineInfo.basePipelineIndex = -1;
 
     vkr::Pipeline pipeline(m_device, nullptr, pipelineInfo);
 
-    return GraphicsPipeline{std::move(pipeline), std::move(layout), std::move(renderPass)};
+    return GraphicsPipeline{std::move(pipeline), std::move(layout)};
 }
 
 vk::Framebuffer
@@ -513,12 +513,15 @@ CommandList VulkanRHI::createCommandList() {
     return CommandList(std::move(commandBuffers[0]), this);
 }
 
-void VulkanRHI::beginRenderPass(CommandList &commandList) {
-
-}
-
 vk::Extent2D VulkanRHI::getExtent() {
     return m_extent;
+}
+
+RenderTarget VulkanRHI::getNextRenderTarget() {
+    RenderTarget renderTarget;
+    uint32_t imgIdx = m_swapchain.acquireNextImage(UINT64_MAX).second;
+    renderTarget.swapchainImg = *m_swapchainImageViews[imgIdx];
+    return renderTarget;
 }
 
 Window::Window() {
@@ -550,7 +553,9 @@ void CommandList::end() {
     commandBuffer.end();
 }
 
-void CommandList::beginRenderPass(vk::RenderPass renderPass) {
+void CommandList::beginRenderPass() {
+
+    vk::RenderPass renderPass = rhi->createRenderPass();
     vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass);
 
     vk::RenderPassBeginInfo renderPassBeginInfo;
@@ -601,8 +606,8 @@ void CommandList::endRenderPass() {
     commandBuffer.endRenderPass();
 }
 
-GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout, vkr::RenderPass &&renderPass)
+GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout)
         : pipeline(
-        std::move(pipeline)), layout(std::move(layout)), renderPass(std::move(renderPass)) {
+        std::move(pipeline)), layout(std::move(layout)) {
 
 }

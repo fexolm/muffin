@@ -29,14 +29,15 @@ struct GraphicsPipelineCreateInfo {
     std::shared_ptr<Shader> fragmentShader;
 };
 
+struct RenderTarget {
+    vk::ImageView swapchainImg;
+};
+
 struct GraphicsPipeline {
-    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout, vkr::RenderPass &&renderPass);
+    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout);
 
     vkr::PipelineLayout layout;
     vkr::Pipeline pipeline;
-    vkr::RenderPass renderPass;
-
-    class VulkanRHI *rhi;
 };
 
 struct CommandList {
@@ -48,7 +49,7 @@ struct CommandList {
 
     void bindPipeline(const GraphicsPipeline &pipeline);
 
-    void beginRenderPass(vk::RenderPass renderPass);
+    void beginRenderPass();
 
     void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
 
@@ -78,11 +79,13 @@ public:
 
     void drawTriangle(CommandList &commandList);
 
-    vkr::RenderPass createRenderPass();
+    vk::RenderPass createRenderPass();
 
     vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass);
 
     vk::Extent2D getExtent();
+
+    RenderTarget getNextRenderTarget();
 
 private:
     Window m_window;
@@ -106,4 +109,5 @@ private:
     vkr::CommandBuffers m_commandBuffers;
 
     std::vector<vkr::Framebuffer> m_frameBuffersCache;
+    std::vector<vkr::RenderPass> m_renderPassCache;
 };

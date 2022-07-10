@@ -26,9 +26,11 @@ int main() {
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
     GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
 
+    // auto renderTarget = rhi.getNextRenderTarget();
+
     auto commandList = rhi.createCommandList();
     commandList.begin();
-    commandList.beginRenderPass(*pipeline.renderPass);
+    commandList.beginRenderPass();
     commandList.bindPipeline(pipeline);
     commandList.setViewport();
     commandList.setScissors();
