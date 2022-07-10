@@ -1,6 +1,9 @@
 #include "VulkanRHI.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
+
+#include <spirv_cross/spirv_cross.hpp>
+
 #include <limits>
 
 vkr::Instance createInstance(const vkr::Context &context, const std::vector<const char *> &enabledExtensions) {
@@ -470,11 +473,18 @@ VulkanRHI::VulkanRHI() :
     m_inFlightFence = vkr::Fence(m_device, fenceInfo);
 }
 
-Shader VulkanRHI::createShader(const std::vector<char> &code) {
+Shader VulkanRHI::createShader(const std::vector<uint32_t> &code) {
     vk::ShaderModuleCreateInfo createInfo;
     createInfo.codeSize = code.size();
-    createInfo.pCode = (uint32_t *) code.data();
+    createInfo.pCode = code.data();
     vkr::ShaderModule shaderMoule(m_device, createInfo);
+
+    spirv_cross::Compiler comp(code);
+
+    for (auto &u: comp.get_shader_resources().uniform_buffers) {
+
+    }
+
     return Shader{std::move(shaderMoule)};
 }
 

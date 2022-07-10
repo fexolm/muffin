@@ -69,7 +69,7 @@ class VulkanRHI {
 public:
     VulkanRHI();
 
-    Shader createShader(const std::vector<char> &code);
+    Shader createShader(const std::vector<uint32_t> &code);
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 

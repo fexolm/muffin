@@ -1,0 +1,8 @@
+{
+  "name": "muffin",
+  "version": "0.0.1",
+  "dependencies": [
+    "sdl2",
+    "spirv-cross"
+  ]
+}
