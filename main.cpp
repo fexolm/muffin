@@ -28,19 +28,19 @@ int main() {
 
     // auto renderTarget = rhi.getNextRenderTarget();
 
-    auto commandList = rhi.createCommandList();
-    commandList.begin();
-    commandList.beginRenderPass();
-    commandList.bindPipeline(pipeline);
-    commandList.setViewport();
-    commandList.setScissors();
-    commandList.draw(3, 1, 0, 0);
-    commandList.endRenderPass();
-    commandList.end();
-
-    rhi.drawTriangle(commandList);
-
-    while (true) {}
-
+    while (true) {
+        auto commandList = rhi.createCommandList();
+        auto renderTarget = rhi.beginFrame();
+        commandList.begin();
+        commandList.beginRenderPass(renderTarget);
+        commandList.bindPipeline(pipeline);
+        commandList.setViewport();
+        commandList.setScissors();
+        commandList.draw(3, 1, 0, 0);
+        commandList.endRenderPass();
+        commandList.end();
+        rhi.submit(commandList);
+        rhi.endFrame();
+    }
     return 0;
 }

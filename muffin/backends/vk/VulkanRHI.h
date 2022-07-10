@@ -49,7 +49,7 @@ struct CommandList {
 
     void bindPipeline(const GraphicsPipeline &pipeline);
 
-    void beginRenderPass();
+    void beginRenderPass(const RenderTarget &renderTarget);
 
     void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
 
@@ -75,17 +75,17 @@ public:
 
     CommandList createCommandList();
 
-    void beginRenderPass(CommandList &commandList);
-
-    void drawTriangle(CommandList &commandList);
+    void submit(CommandList &commandList);
 
     vk::RenderPass createRenderPass();
 
-    vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass);
+    vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget);
 
     vk::Extent2D getExtent();
 
-    RenderTarget getNextRenderTarget();
+    RenderTarget beginFrame();
+
+    void endFrame();
 
 private:
     Window m_window;
@@ -108,6 +108,12 @@ private:
     vkr::CommandPool m_commandPool;
     vkr::CommandBuffers m_commandBuffers;
 
+    vkr::Semaphore m_imageAvailableSemaphore;
+    vkr::Semaphore m_renderFinishedSemaphore;
+    vkr::Fence m_inFlightFence;
+
     std::vector<vkr::Framebuffer> m_frameBuffersCache;
     std::vector<vkr::RenderPass> m_renderPassCache;
+
+    uint32_t m_currentSwapchainImgIdx;
 };

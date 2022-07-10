@@ -397,9 +397,9 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 }
 
 vk::Framebuffer
-VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass) {
+VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget) {
     vk::ImageView attachments[] = {
-            *m_swapchainImageViews[0]
+            renderTarget.swapchainImg
     };
     vk::FramebufferCreateInfo framebufferInfo;
     framebufferInfo.renderPass = renderPass;
@@ -424,7 +424,10 @@ VulkanRHI::VulkanRHI() :
         m_swapchain(nullptr),
         m_swapchainImageViews(),
         m_commandPool(nullptr),
-        m_commandBuffers(nullptr) {
+        m_commandBuffers(nullptr),
+        m_imageAvailableSemaphore(nullptr),
+        m_renderFinishedSemaphore(nullptr),
+        m_inFlightFence(nullptr) {
 
     uint32_t extensionsCount;
     SDL_Vulkan_GetInstanceExtensions(m_window.window, &extensionsCount, nullptr);
@@ -457,6 +460,14 @@ VulkanRHI::VulkanRHI() :
     m_swapchainImageViews = createSwapchainImageViews(m_swapchain, m_device, m_surfaceFormat, m_extent);
 
     m_commandPool = createCommandPool(m_device, m_graphicsFamilyIdx);
+
+    vk::SemaphoreCreateInfo semaphoreInfo;
+    m_imageAvailableSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
+    m_renderFinishedSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
+
+    vk::FenceCreateInfo fenceInfo;
+    fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
+    m_inFlightFence = vkr::Fence(m_device, fenceInfo);
 }
 
 Shader VulkanRHI::createShader(const std::vector<char> &code) {
@@ -467,43 +478,18 @@ Shader VulkanRHI::createShader(const std::vector<char> &code) {
     return Shader{std::move(shaderMoule)};
 }
 
-void VulkanRHI::drawTriangle(CommandList &commandList) {
-    vk::SemaphoreCreateInfo semaphoreInfo;
-    vkr::Semaphore imageAvailableSemaphore(m_device, semaphoreInfo);
-    vkr::Semaphore renderFinishedSemaphore(m_device, semaphoreInfo);
-
-    vk::FenceCreateInfo fenceInfo;
-    fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
-
-    vkr::Fence inFlightFence(m_device, fenceInfo);
-
-    m_device.waitForFences({*inFlightFence}, true, UINT64_MAX);
-    m_device.resetFences({*inFlightFence});
-
-    uint32_t imgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphore, nullptr).second;
+void VulkanRHI::submit(CommandList &commandList) {
     vk::SubmitInfo submitInfo;
-    vk::Semaphore waitSemaphores[] = {*imageAvailableSemaphore};
+    vk::Semaphore waitSemaphores[] = {*m_imageAvailableSemaphore};
     vk::CommandBuffer commandBuffers = {*commandList.commandBuffer};
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
-    vk::Semaphore signalSemaphores[] = {*renderFinishedSemaphore};
+    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphore};
     submitInfo.setWaitSemaphores(waitSemaphores)
             .setWaitDstStageMask(waitStages)
             .setCommandBuffers(commandBuffers)
             .setSignalSemaphores(signalSemaphores);
 
-    m_graphicsQueue.submit({submitInfo}, *inFlightFence);
-
-    vk::SwapchainKHR swapChains[] = {*m_swapchain};
-    vk::PresentInfoKHR presentInfo;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.swapchainCount = 1;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-    presentInfo.pResults = nullptr;
-
-    presentInfo.pImageIndices = &imgIdx;
-
-    m_graphicsQueue.presentKHR(presentInfo);
+    m_graphicsQueue.submit({submitInfo}, *m_inFlightFence);
 }
 
 CommandList VulkanRHI::createCommandList() {
@@ -517,11 +503,27 @@ vk::Extent2D VulkanRHI::getExtent() {
     return m_extent;
 }
 
-RenderTarget VulkanRHI::getNextRenderTarget() {
-    RenderTarget renderTarget;
-    uint32_t imgIdx = m_swapchain.acquireNextImage(UINT64_MAX).second;
-    renderTarget.swapchainImg = *m_swapchainImageViews[imgIdx];
-    return renderTarget;
+RenderTarget VulkanRHI::beginFrame() {
+    m_device.resetFences({*m_inFlightFence});
+    m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphore, nullptr).second;
+
+    return RenderTarget{*m_swapchainImageViews[m_currentSwapchainImgIdx]};
+}
+
+void VulkanRHI::endFrame() {
+    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphore};
+    vk::SwapchainKHR swapChains[] = {*m_swapchain};
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.swapchainCount = 1;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+    presentInfo.pResults = nullptr;
+
+    presentInfo.pImageIndices = &m_currentSwapchainImgIdx;
+
+    m_graphicsQueue.presentKHR(presentInfo);
+    m_device.waitForFences({*m_inFlightFence}, true, UINT64_MAX);
 }
 
 Window::Window() {
@@ -553,10 +555,10 @@ void CommandList::end() {
     commandBuffer.end();
 }
 
-void CommandList::beginRenderPass() {
+void CommandList::beginRenderPass(const RenderTarget &renderTarget) {
 
     vk::RenderPass renderPass = rhi->createRenderPass();
-    vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass);
+    vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass, renderTarget);
 
     vk::RenderPassBeginInfo renderPassBeginInfo;
     renderPassBeginInfo.renderPass = renderPass;
