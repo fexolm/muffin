@@ -473,16 +473,36 @@ VulkanRHI::VulkanRHI() :
     m_inFlightFence = vkr::Fence(m_device, fenceInfo);
 }
 
+#include <iostream>
+
 Shader VulkanRHI::createShader(const std::vector<uint32_t> &code) {
     vk::ShaderModuleCreateInfo createInfo;
-    createInfo.codeSize = code.size();
+    createInfo.codeSize = code.size() * sizeof(uint32_t);
     createInfo.pCode = code.data();
     vkr::ShaderModule shaderMoule(m_device, createInfo);
 
     spirv_cross::Compiler comp(code);
 
-    for (auto &u: comp.get_shader_resources().uniform_buffers) {
+    auto resources = comp.get_shader_resources();
 
+    std::cout << "builtin_inputs " << resources.builtin_inputs.size() << std::endl;
+    for (auto &r: resources.builtin_inputs) {
+        std::cout << r.resource.name << std::endl;
+    }
+
+    std::cout << "builtin_outputs " << resources.builtin_outputs.size() << std::endl;
+    for (auto &r: resources.builtin_outputs) {
+        std::cout << r.resource.name << std::endl;
+    }
+
+    std::cout << "stage_inputs " << resources.stage_inputs.size() << std::endl;
+    for (auto &r: resources.stage_inputs) {
+        std::cout << r.name << std::endl;
+    }
+
+    std::cout << "stage_outputs " << resources.stage_outputs.size() << std::endl;
+    for (auto &r: resources.stage_outputs) {
+        std::cout << r.name << std::endl;
     }
 
     return Shader{std::move(shaderMoule)};
