@@ -17,6 +17,12 @@ static std::vector<uint32_t> readFile(const std::string &filename) {
 }
 
 int main() {
+    const std::vector<Vertex> vertices = {
+            {{0.0f,  -0.5f}, {1.0f, 1.0f, 1.0f}},
+            {{0.5f,  0.5f},  {0.0f, 1.0f, 0.0f}},
+            {{-0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}}
+    };
+
     VulkanRHI rhi;
     auto vert = rhi.createShader(readFile("vert.spv"));
     auto frag = rhi.createShader(readFile("frag.spv"));
@@ -28,12 +34,16 @@ int main() {
 
     // auto renderTarget = rhi.getNextRenderTarget();
 
+    auto vertexBuf = rhi.createBuffer(vertices.size() * sizeof(Vertex));
+    vertexBuf.fill((void *) vertices.data(), vertices.size() * sizeof(Vertex));
+
     while (true) {
         auto commandList = rhi.createCommandList();
         auto renderTarget = rhi.beginFrame();
         commandList.begin();
         commandList.beginRenderPass(renderTarget);
         commandList.bindPipeline(pipeline);
+        commandList.bindVertexBuffer(vertexBuf);
         commandList.setViewport();
         commandList.setScissors();
         commandList.draw(3, 1, 0, 0);

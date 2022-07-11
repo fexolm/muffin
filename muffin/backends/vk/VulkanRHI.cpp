@@ -65,6 +65,18 @@ vkr::PhysicalDevice choosePhysicalDevice(const vkr::Instance &instance) {
     return nullptr;
 }
 
+uint32_t
+findMemoryType(const vkr::PhysicalDevice &physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties) {
+    auto deviceMemProps = physicalDevice.getMemoryProperties();
+    for (uint32_t i = 0; i < deviceMemProps.memoryTypeCount; i++) {
+        if (typeFilter & (1 << i) && (deviceMemProps.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
+}
+
 vkr::SurfaceKHR createSurface(const vkr::Instance &instance, SDL_Window *window) {
     VkSurfaceKHR surfaceHandle;
     if (!SDL_Vulkan_CreateSurface(window, *instance, (SDL_vulkanSurface *) &surfaceHandle)) {
@@ -295,11 +307,32 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
+    vk::VertexInputBindingDescription bindingDescription;
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(Vertex);
+    bindingDescription.inputRate = vk::VertexInputRate::eVertex;
+
+    vk::VertexInputAttributeDescription posDescription;
+    posDescription.binding = 0;
+    posDescription.location = 0;
+    posDescription.format = vk::Format::eR32G32Sfloat;
+    posDescription.offset = offsetof(Vertex, pos);
+
+    vk::VertexInputAttributeDescription colorDescription;
+    colorDescription.binding = 0;
+    colorDescription.location = 1;
+    colorDescription.format = vk::Format::eR32G32B32Sfloat;
+    colorDescription.offset = offsetof(Vertex, color);
+
+    vk::VertexInputAttributeDescription attributeDescriptions[] = {
+            posDescription, colorDescription
+    };
+
     vk::PipelineVertexInputStateCreateInfo vertexInput;
-    vertexInput.vertexBindingDescriptionCount = 0;
-    vertexInput.pVertexBindingDescriptions = nullptr;
-    vertexInput.vertexAttributeDescriptionCount = 0;
-    vertexInput.pVertexBindingDescriptions = nullptr;
+    vertexInput.vertexBindingDescriptionCount = 1;
+    vertexInput.pVertexBindingDescriptions = &bindingDescription;
+    vertexInput.vertexAttributeDescriptionCount = 2;
+    vertexInput.pVertexAttributeDescriptions = attributeDescriptions;
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
     inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -556,6 +589,27 @@ void VulkanRHI::endFrame() {
     m_device.waitForFences({*m_inFlightFence}, true, UINT64_MAX);
 }
 
+Buffer VulkanRHI::createBuffer(size_t size) {
+    vk::BufferCreateInfo bufferInfo;
+    bufferInfo.size = size;
+    bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+    vkr::Buffer buffer(m_device, bufferInfo);
+
+    auto memReq = buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReq.memoryTypeBits,
+                                               vk::MemoryPropertyFlagBits::eHostVisible |
+                                               vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    auto memory = m_device.allocateMemory(allocInfo);
+    buffer.bindMemory(*memory, 0);
+    return Buffer{std::move(buffer), std::move(memory)};
+}
+
 Window::Window() {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
     window = SDL_CreateWindow("SDL Vulkan Sample", 0, 0, 800, 600, SDL_WINDOW_VULKAN);
@@ -638,8 +692,18 @@ void CommandList::endRenderPass() {
     commandBuffer.endRenderPass();
 }
 
+void CommandList::bindVertexBuffer(const Buffer &buf) {
+    commandBuffer.bindVertexBuffers(0, {*buf.buffer}, {0});
+}
+
 GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout)
         : pipeline(
         std::move(pipeline)), layout(std::move(layout)) {
 
+}
+
+void Buffer::fill(void *data, size_t size) {
+    void *devicePtr = memory.mapMemory(0, size);
+    memcpy(devicePtr, data, size);
+    memory.unmapMemory();
 }

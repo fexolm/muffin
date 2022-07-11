@@ -3,6 +3,9 @@
 
 #include <vulkan/vulkan_raii.hpp>
 #include <SDL2/SDL.h>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+
 #include <memory>
 
 namespace vkr = vk::raii;
@@ -18,10 +21,22 @@ struct Window {
     ~Window();
 };
 
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+};
+
 struct Shader {
     explicit Shader(vkr::ShaderModule &&module);
 
     vkr::ShaderModule module;
+};
+
+struct Buffer {
+    vkr::Buffer buffer;
+    vkr::DeviceMemory memory;
+
+    void fill(void *data, size_t size);
 };
 
 struct GraphicsPipelineCreateInfo {
@@ -59,6 +74,8 @@ struct CommandList {
 
     void endRenderPass();
 
+    void bindVertexBuffer(const Buffer &buf);
+
     class VulkanRHI *rhi;
 
     vkr::CommandBuffer commandBuffer;
@@ -70,6 +87,8 @@ public:
     VulkanRHI();
 
     Shader createShader(const std::vector<uint32_t> &code);
+
+    Buffer createBuffer(size_t size);
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
