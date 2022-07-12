@@ -589,10 +589,19 @@ void VulkanRHI::endFrame() {
     m_device.waitForFences({*m_inFlightFence}, true, UINT64_MAX);
 }
 
-Buffer VulkanRHI::createBuffer(size_t size) {
+Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
     vk::BufferCreateInfo bufferInfo;
     bufferInfo.size = size;
-    bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+
+    switch (info.usage) {
+        case BufferUsage::Index:
+            bufferInfo.usage = vk::BufferUsageFlagBits::eIndexBuffer;
+            break;
+        case BufferUsage::Vertex:
+            bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+            break;
+    }
+
     bufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
     vkr::Buffer buffer(m_device, bufferInfo);
@@ -661,6 +670,12 @@ void CommandList::draw(int vertexCount, int instanceCount, int firstVertex, int 
     commandBuffer.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
+void CommandList::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
+                              uint32_t firstInstance) {
+    commandBuffer.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+}
+
+
 void CommandList::bindPipeline(const GraphicsPipeline &pipeline) {
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline.pipeline);
 }
@@ -694,6 +709,10 @@ void CommandList::endRenderPass() {
 
 void CommandList::bindVertexBuffer(const Buffer &buf) {
     commandBuffer.bindVertexBuffers(0, {*buf.buffer}, {0});
+}
+
+void CommandList::bindIndexBuffer(const Buffer &buf) {
+    commandBuffer.bindIndexBuffer(*buf.buffer, 0, vk::IndexType::eUint16);
 }
 
 GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout)

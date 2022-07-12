@@ -18,9 +18,14 @@ static std::vector<uint32_t> readFile(const std::string &filename) {
 
 int main() {
     const std::vector<Vertex> vertices = {
-            {{0.0f,  -0.5f}, {1.0f, 1.0f, 1.0f}},
-            {{0.5f,  0.5f},  {0.0f, 1.0f, 0.0f}},
-            {{-0.5f, 0.5f},  {0.0f, 0.0f, 1.0f}}
+            {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+            {{0.5f,  -0.5f}, {0.0f, 1.0f, 0.0f}},
+            {{0.5f,  0.5f},  {0.0f, 0.0f, 1.0f}},
+            {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
+    };
+
+    const std::vector<uint16_t> indices = {
+            0, 1, 2, 2, 3, 0
     };
 
     VulkanRHI rhi;
@@ -34,8 +39,11 @@ int main() {
 
     // auto renderTarget = rhi.getNextRenderTarget();
 
-    auto vertexBuf = rhi.createBuffer(vertices.size() * sizeof(Vertex));
+    auto vertexBuf = rhi.createBuffer(vertices.size() * sizeof(Vertex), BufferInfo{BufferUsage::Vertex});
     vertexBuf.fill((void *) vertices.data(), vertices.size() * sizeof(Vertex));
+
+    auto indexBuf = rhi.createBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
+    indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
     while (true) {
         auto commandList = rhi.createCommandList();
@@ -44,9 +52,10 @@ int main() {
         commandList.beginRenderPass(renderTarget);
         commandList.bindPipeline(pipeline);
         commandList.bindVertexBuffer(vertexBuf);
+        commandList.bindIndexBuffer(indexBuf);
         commandList.setViewport();
         commandList.setScissors();
-        commandList.draw(3, 1, 0, 0);
+        commandList.drawIndexed(indices.size(), 1, 0, 0, 0);
         commandList.endRenderPass();
         commandList.end();
         rhi.submit(commandList);

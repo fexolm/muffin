@@ -32,6 +32,15 @@ struct Shader {
     vkr::ShaderModule module;
 };
 
+enum class BufferUsage {
+    Vertex,
+    Index,
+};
+
+struct BufferInfo {
+    BufferUsage usage;
+};
+
 struct Buffer {
     vkr::Buffer buffer;
     vkr::DeviceMemory memory;
@@ -68,6 +77,9 @@ struct CommandList {
 
     void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
 
+    void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
+                     uint32_t firstInstance);
+
     void setViewport();
 
     void setScissors();
@@ -75,6 +87,8 @@ struct CommandList {
     void endRenderPass();
 
     void bindVertexBuffer(const Buffer &buf);
+
+    void bindIndexBuffer(const Buffer &buf);
 
     class VulkanRHI *rhi;
 
@@ -88,7 +102,7 @@ public:
 
     Shader createShader(const std::vector<uint32_t> &code);
 
-    Buffer createBuffer(size_t size);
+    Buffer createBuffer(size_t size, const BufferInfo &info);
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
