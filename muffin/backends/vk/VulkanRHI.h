@@ -22,7 +22,7 @@ struct Window {
 };
 
 struct Vertex {
-    glm::vec2 pos;
+    glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
 };
@@ -150,7 +150,7 @@ public:
 
     DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline);
 
-    Texture createTexture(int width, int height);
+    Texture createTexture(uint32_t width, uint32_t height);
 
     Sampler createSampler();
 
@@ -163,9 +163,6 @@ public:
     void endFrame();
 
 private:
-    void transitionImageLayout(const vkr::Image &img, vk::Format format, vk::ImageLayout oldLayout,
-                               vk::ImageLayout newLayout);
-
     Window m_window;
     vkr::Context m_context;
     vkr::Instance m_instance;
@@ -196,4 +193,6 @@ private:
     std::vector<vkr::RenderPass> m_renderPassCache;
 
     uint32_t m_currentSwapchainImgIdx;
+
+    Texture m_depthImage;
 };
