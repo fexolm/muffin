@@ -24,6 +24,7 @@ struct Window {
 struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
+    glm::vec2 texCoord;
 };
 
 enum class ShaderType {
@@ -82,6 +83,11 @@ struct DescriptorSet {
 struct Texture {
     vkr::Image image;
     vkr::DeviceMemory memory;
+    vkr::ImageView view;
+};
+
+struct Sampler {
+    vkr::Sampler sampler;
 };
 
 struct CommandList {
@@ -146,11 +152,13 @@ public:
 
     Texture createTexture(int width, int height);
 
+    Sampler createSampler();
+
     void copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size);
 
     void copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_t width, uint32_t height);
 
-    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size);
+    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Texture &texture, Sampler &sampler, int size);
 
     void endFrame();
 

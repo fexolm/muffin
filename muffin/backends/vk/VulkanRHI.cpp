@@ -242,13 +242,16 @@ createSwapchainImageViews(const vkr::SwapchainKHR &swapchain, const vkr::Device 
 }
 
 vkr::DescriptorPool createDescriptorPool(const vkr::Device &device) {
-    vk::DescriptorPoolSize poolSize;
-    poolSize.descriptorCount = 4096;
-    poolSize.type = vk::DescriptorType::eUniformBuffer;
+    vk::DescriptorPoolSize poolSizes[2];
+    poolSizes[0].descriptorCount = 4096;
+    poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+
+    poolSizes[1].descriptorCount = 4096;
+    poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
 
     vk::DescriptorPoolCreateInfo createInfo;
-    createInfo.poolSizeCount = 1;
-    createInfo.pPoolSizes = &poolSize;
+    createInfo.poolSizeCount = 2;
+    createInfo.pPoolSizes = poolSizes;
     createInfo.maxSets = 1000;
     createInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 
@@ -349,14 +352,20 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     colorDescription.format = vk::Format::eR32G32B32Sfloat;
     colorDescription.offset = offsetof(Vertex, color);
 
+    vk::VertexInputAttributeDescription texCoordDescription;
+    texCoordDescription.binding = 0;
+    texCoordDescription.location = 2;
+    texCoordDescription.format = vk::Format::eR32G32Sfloat;
+    texCoordDescription.offset = offsetof(Vertex, texCoord);
+
     vk::VertexInputAttributeDescription attributeDescriptions[] = {
-            posDescription, colorDescription
+            posDescription, colorDescription, texCoordDescription
     };
 
     vk::PipelineVertexInputStateCreateInfo vertexInput;
     vertexInput.vertexBindingDescriptionCount = 1;
     vertexInput.pVertexBindingDescriptions = &bindingDescription;
-    vertexInput.vertexAttributeDescriptionCount = 2;
+    vertexInput.vertexAttributeDescriptionCount = 3;
     vertexInput.pVertexAttributeDescriptions = attributeDescriptions;
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
@@ -574,6 +583,25 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
         res.bindings.push_back(layoutBinding);
     }
 
+    for (auto &ub: resources.sampled_images) {
+        auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        vk::DescriptorSetLayoutBinding layoutBinding;
+        layoutBinding.binding = binding;
+        layoutBinding.descriptorCount = 1;
+        layoutBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+
+        switch (type) {
+            case ShaderType::Vertex:
+                layoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+                break;
+            case ShaderType::Fragment:
+                layoutBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+                break;
+        }
+        layoutBinding.pImmutableSamplers = nullptr;
+        res.bindings.push_back(layoutBinding);
+    }
+
     return res;
 }
 
@@ -671,23 +699,35 @@ DescriptorSet VulkanRHI::createDescriptorSet(const GraphicsPipeline &pipeline) {
     return DescriptorSet{std::move(descriptorSets[0])};
 }
 
-void VulkanRHI::updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size) {
+void VulkanRHI::updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Texture &texture, Sampler &sampler, int size) {
     vk::DescriptorBufferInfo bufferInfo;
     bufferInfo.buffer = *buffer.buffer;
     bufferInfo.offset = 0;
     bufferInfo.range = size;
 
-    vk::WriteDescriptorSet write;
-    write.dstSet = *set.descriptorSet;
-    write.dstBinding = 0;
-    write.dstArrayElement = 0;
-    write.descriptorType = vk::DescriptorType::eUniformBuffer;
-    write.descriptorCount = 1;
-    write.pBufferInfo = &bufferInfo;
-    write.pImageInfo = nullptr;
-    write.pTexelBufferView = nullptr;
+    vk::DescriptorImageInfo imageInfo;
+    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    imageInfo.imageView = *texture.view;
+    imageInfo.sampler = *sampler.sampler;
 
-    m_device.updateDescriptorSets(write, {});
+    vk::WriteDescriptorSet writes[2];
+    writes[0].dstSet = *set.descriptorSet;
+    writes[0].dstBinding = 0;
+    writes[0].dstArrayElement = 0;
+    writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+    writes[0].descriptorCount = 1;
+    writes[0].pBufferInfo = &bufferInfo;
+    writes[0].pImageInfo = nullptr;
+    writes[0].pTexelBufferView = nullptr;
+
+    writes[1].dstSet = *set.descriptorSet;
+    writes[1].dstBinding = 1;
+    writes[1].dstArrayElement = 0;
+    writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    writes[1].descriptorCount = 1;
+    writes[1].pImageInfo = &imageInfo;
+
+    m_device.updateDescriptorSets(writes, {});
 }
 
 Texture VulkanRHI::createTexture(int width, int height) {
@@ -718,7 +758,19 @@ Texture VulkanRHI::createTexture(int width, int height) {
 
     image.bindMemory(*memory, 0);
 
-    return Texture{std::move(image), std::move(memory)};
+    vk::ImageViewCreateInfo viewInfo;
+    viewInfo.image = *image;
+    viewInfo.viewType = vk::ImageViewType::e2D;
+    viewInfo.format = vk::Format::eR8G8B8A8Srgb;
+    viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    vkr::ImageView view = m_device.createImageView(viewInfo);
+
+    return Texture{std::move(image), std::move(memory), std::move(view)};
 }
 
 void VulkanRHI::copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size) {
@@ -812,6 +864,28 @@ void VulkanRHI::submitAndWaitIdle(CommandList &commandList) {
     submitInfo.pCommandBuffers = &*commandList.commandBuffer;
     m_graphicsQueue.submit({submitInfo}, nullptr);
     m_device.waitIdle();
+}
+
+Sampler VulkanRHI::createSampler() {
+    vk::SamplerCreateInfo samplerInfo;
+    samplerInfo.magFilter = vk::Filter::eLinear;
+    samplerInfo.minFilter = vk::Filter::eLinear;
+    samplerInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeW = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.anisotropyEnable = true;
+    samplerInfo.maxAnisotropy = m_physicalDevice.getProperties().limits.maxSamplerAnisotropy;
+    samplerInfo.borderColor = vk::BorderColor::eIntOpaqueBlack;
+    samplerInfo.unnormalizedCoordinates = false;
+    samplerInfo.compareEnable = false;
+    samplerInfo.compareOp = vk::CompareOp::eAlways;
+    samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+    samplerInfo.mipLodBias = 0.f;
+    samplerInfo.minLod = 0.f;
+    samplerInfo.maxLod = 0.f;
+
+    vkr::Sampler sampler = m_device.createSampler(samplerInfo);
+    return Sampler{std::move(sampler)};
 }
 
 

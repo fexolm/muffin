@@ -33,10 +33,10 @@ int main() {
     UniformBufferObject ubo{};
 
     const std::vector<Vertex> vertices = {
-            {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-            {{0.5f,  -0.5f}, {0.0f, 1.0f, 0.0f}},
-            {{0.5f,  0.5f},  {0.0f, 0.0f, 1.0f}},
-            {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
+            {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+            {{0.5f,  -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+            {{0.5f,  0.5f},  {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+            {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
     };
 
     const std::vector<uint16_t> indices = {
@@ -76,6 +76,7 @@ int main() {
 
     rhi.copyBufferToTexture(imgBuffer, texture, texWidth, texHeight);
 
+    Sampler sampler = rhi.createSampler();
 
     while (true) {
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -83,7 +84,7 @@ int main() {
 
         auto uniformBuffer = rhi.createBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
         auto descriptorSet = rhi.createDescriptorSet(pipeline);
-        rhi.updateDescriptorSet(descriptorSet, uniformBuffer, sizeof(UniformBufferObject));
+        rhi.updateDescriptorSet(descriptorSet, uniformBuffer, texture, sampler, sizeof(UniformBufferObject));
 
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
