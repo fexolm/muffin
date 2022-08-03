@@ -241,11 +241,36 @@ createSwapchainImageViews(const vkr::SwapchainKHR &swapchain, const vkr::Device 
     return imageViews;
 }
 
+vkr::DescriptorPool createDescriptorPool(const vkr::Device &device) {
+    vk::DescriptorPoolSize poolSize;
+    poolSize.descriptorCount = 4096;
+    poolSize.type = vk::DescriptorType::eUniformBuffer;
 
-vkr::PipelineLayout createPipelineLayout(const vkr::Device &device) {
+    vk::DescriptorPoolCreateInfo createInfo;
+    createInfo.poolSizeCount = 1;
+    createInfo.pPoolSizes = &poolSize;
+    createInfo.maxSets = 1000;
+    createInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+
+    vkr::DescriptorPool descriptorPool(device, createInfo);
+    return descriptorPool;
+}
+
+vkr::DescriptorSetLayout
+createDescriptorSetLayout(const vkr::Device &device, const std::vector<vk::DescriptorSetLayoutBinding> &bindings) {
+    vk::DescriptorSetLayoutCreateInfo createInfo;
+    createInfo.bindingCount = bindings.size();
+    createInfo.pBindings = bindings.data();
+
+    vkr::DescriptorSetLayout descriptorSetLayout(device, createInfo);
+    return descriptorSetLayout;
+}
+
+vkr::PipelineLayout
+createPipelineLayout(const vkr::Device &device, const vkr::DescriptorSetLayout &descriptorSetLayout) {
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &*descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -370,7 +395,7 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     rasterizer.polygonMode = vk::PolygonMode::eFill;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
+    rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizer.depthBiasEnable = false;
     rasterizer.depthBiasConstantFactor = 0.f;
     rasterizer.depthBiasClamp = 0.f;
@@ -406,7 +431,13 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
-    vkr::PipelineLayout layout = createPipelineLayout(m_device);
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    bindings.insert(bindings.end(), info.vertexShader->bindings.begin(), info.vertexShader->bindings.end());
+    bindings.insert(bindings.end(), info.fragmentShader->bindings.begin(), info.fragmentShader->bindings.end());
+
+    vkr::DescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(m_device, bindings);
+
+    vkr::PipelineLayout layout = createPipelineLayout(m_device, descriptorSetLayout);
 
     vk::RenderPass renderPass = createRenderPass();
 
@@ -429,7 +460,7 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 
     vkr::Pipeline pipeline(m_device, nullptr, pipelineInfo);
 
-    return GraphicsPipeline{std::move(pipeline), std::move(layout)};
+    return GraphicsPipeline{std::move(pipeline), std::move(layout), std::move(descriptorSetLayout)};
 }
 
 vk::Framebuffer
@@ -461,6 +492,7 @@ VulkanRHI::VulkanRHI() :
         m_swapchainImageViews(),
         m_commandPool(nullptr),
         m_commandBuffers(nullptr),
+        m_descriptorPool(nullptr),
         m_imageAvailableSemaphore(nullptr),
         m_renderFinishedSemaphore(nullptr),
         m_inFlightFence(nullptr) {
@@ -497,6 +529,8 @@ VulkanRHI::VulkanRHI() :
 
     m_commandPool = createCommandPool(m_device, m_graphicsFamilyIdx);
 
+    m_descriptorPool = createDescriptorPool(m_device);
+
     vk::SemaphoreCreateInfo semaphoreInfo;
     m_imageAvailableSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
     m_renderFinishedSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
@@ -508,7 +542,7 @@ VulkanRHI::VulkanRHI() :
 
 #include <iostream>
 
-Shader VulkanRHI::createShader(const std::vector<uint32_t> &code) {
+Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType type) {
     vk::ShaderModuleCreateInfo createInfo;
     createInfo.codeSize = code.size() * sizeof(uint32_t);
     createInfo.pCode = code.data();
@@ -518,27 +552,29 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code) {
 
     auto resources = comp.get_shader_resources();
 
-    std::cout << "builtin_inputs " << resources.builtin_inputs.size() << std::endl;
-    for (auto &r: resources.builtin_inputs) {
-        std::cout << r.resource.name << std::endl;
+    auto res = Shader{std::move(shaderMoule)};
+
+    for (auto &ub: resources.uniform_buffers) {
+        //auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+        auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        vk::DescriptorSetLayoutBinding layoutBinding;
+        layoutBinding.binding = binding;
+        layoutBinding.descriptorCount = 1;
+        layoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+        switch (type) {
+            case ShaderType::Vertex:
+                layoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+                break;
+            case ShaderType::Fragment:
+                layoutBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+                break;
+        }
+        layoutBinding.pImmutableSamplers = nullptr;
+
+        res.bindings.push_back(layoutBinding);
     }
 
-    std::cout << "builtin_outputs " << resources.builtin_outputs.size() << std::endl;
-    for (auto &r: resources.builtin_outputs) {
-        std::cout << r.resource.name << std::endl;
-    }
-
-    std::cout << "stage_inputs " << resources.stage_inputs.size() << std::endl;
-    for (auto &r: resources.stage_inputs) {
-        std::cout << r.name << std::endl;
-    }
-
-    std::cout << "stage_outputs " << resources.stage_outputs.size() << std::endl;
-    for (auto &r: resources.stage_outputs) {
-        std::cout << r.name << std::endl;
-    }
-
-    return Shader{std::move(shaderMoule)};
+    return res;
 }
 
 void VulkanRHI::submit(CommandList &commandList) {
@@ -600,6 +636,8 @@ Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
         case BufferUsage::Vertex:
             bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
             break;
+        case BufferUsage::Uniform:
+            bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
     }
 
     bufferInfo.sharingMode = vk::SharingMode::eExclusive;
@@ -617,6 +655,35 @@ Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
     auto memory = m_device.allocateMemory(allocInfo);
     buffer.bindMemory(*memory, 0);
     return Buffer{std::move(buffer), std::move(memory)};
+}
+
+DescriptorSet VulkanRHI::createDescriptorSet(const GraphicsPipeline &pipeline) {
+    vk::DescriptorSetAllocateInfo allocInfo;
+    allocInfo.descriptorPool = *m_descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &*pipeline.descriptorSetLayout;
+    std::vector<vkr::DescriptorSet> descriptorSets = m_device.allocateDescriptorSets(allocInfo);
+
+    return DescriptorSet{std::move(descriptorSets[0])};
+}
+
+void VulkanRHI::updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size) {
+    vk::DescriptorBufferInfo bufferInfo;
+    bufferInfo.buffer = *buffer.buffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = size;
+
+    vk::WriteDescriptorSet write;
+    write.dstSet = *set.descriptorSet;
+    write.dstBinding = 0;
+    write.dstArrayElement = 0;
+    write.descriptorType = vk::DescriptorType::eUniformBuffer;
+    write.descriptorCount = 1;
+    write.pBufferInfo = &bufferInfo;
+    write.pImageInfo = nullptr;
+    write.pTexelBufferView = nullptr;
+
+    m_device.updateDescriptorSets(write, {});
 }
 
 Window::Window() {
@@ -715,9 +782,15 @@ void CommandList::bindIndexBuffer(const Buffer &buf) {
     commandBuffer.bindIndexBuffer(*buf.buffer, 0, vk::IndexType::eUint16);
 }
 
-GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout)
+void CommandList::bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set) {
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline.layout, 0, *set.descriptorSet,
+                                     {});
+}
+
+GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
+                                   vkr::DescriptorSetLayout &&descriptorSetLayout)
         : pipeline(
-        std::move(pipeline)), layout(std::move(layout)) {
+        std::move(pipeline)), layout(std::move(layout)), descriptorSetLayout(std::move(descriptorSetLayout)) {
 
 }
 

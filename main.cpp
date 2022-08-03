@@ -1,5 +1,9 @@
 #include "muffin/backends/vk/VulkanRHI.h"
 #include <fstream>
+#include <chrono>
+#include <glm/matrix.hpp>
+#include <glm/geometric.hpp>
+#include <glm/ext.hpp>
 
 static std::vector<uint32_t> readFile(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -16,7 +20,22 @@ static std::vector<uint32_t> readFile(const std::string &filename) {
     return buffer;
 }
 
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
+void updateUniformBuffer(uint32_t currentImage) {
+
+
+}
+
 int main() {
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    UniformBufferObject ubo{};
+
     const std::vector<Vertex> vertices = {
             {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
             {{0.5f,  -0.5f}, {0.0f, 1.0f, 0.0f}},
@@ -25,12 +44,17 @@ int main() {
     };
 
     const std::vector<uint16_t> indices = {
-            0, 1, 2, 2, 3, 0
+            0,
+            1,
+            2,
+            2,
+            3,
+            0
     };
 
     VulkanRHI rhi;
-    auto vert = rhi.createShader(readFile("vert.spv"));
-    auto frag = rhi.createShader(readFile("frag.spv"));
+    auto vert = rhi.createShader(readFile("vert.spv"), ShaderType::Vertex);
+    auto frag = rhi.createShader(readFile("frag.spv"), ShaderType::Fragment);
 
     GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
@@ -46,6 +70,20 @@ int main() {
     indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
     while (true) {
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        
+        auto uniformBuffer = rhi.createBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
+        auto descriptorSet = rhi.createDescriptorSet(pipeline);
+        rhi.updateDescriptorSet(descriptorSet, uniformBuffer, sizeof(UniformBufferObject));
+
+        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
+        ubo.proj[1][1] *= -1;
+
+        uniformBuffer.fill((void *) &ubo, sizeof(UniformBufferObject));
+
         auto commandList = rhi.createCommandList();
         auto renderTarget = rhi.beginFrame();
         commandList.begin();
@@ -53,6 +91,7 @@ int main() {
         commandList.bindPipeline(pipeline);
         commandList.bindVertexBuffer(vertexBuf);
         commandList.bindIndexBuffer(indexBuf);
+        commandList.bindDescriptorSet(pipeline, descriptorSet);
         commandList.setViewport();
         commandList.setScissors();
         commandList.drawIndexed(indices.size(), 1, 0, 0, 0);

@@ -26,15 +26,23 @@ struct Vertex {
     glm::vec3 color;
 };
 
+enum class ShaderType {
+    Vertex,
+    Fragment
+};
+
 struct Shader {
     explicit Shader(vkr::ShaderModule &&module);
 
     vkr::ShaderModule module;
+
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
 };
 
 enum class BufferUsage {
     Vertex,
     Index,
+    Uniform,
 };
 
 struct BufferInfo {
@@ -58,10 +66,16 @@ struct RenderTarget {
 };
 
 struct GraphicsPipeline {
-    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout);
+    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
+                     vkr::DescriptorSetLayout &&descriptorSetLayout);
 
     vkr::PipelineLayout layout;
     vkr::Pipeline pipeline;
+    vkr::DescriptorSetLayout descriptorSetLayout;
+};
+
+struct DescriptorSet {
+    vkr::DescriptorSet descriptorSet;
 };
 
 struct CommandList {
@@ -90,6 +104,8 @@ struct CommandList {
 
     void bindIndexBuffer(const Buffer &buf);
 
+    void bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set);
+
     class VulkanRHI *rhi;
 
     vkr::CommandBuffer commandBuffer;
@@ -100,7 +116,7 @@ class VulkanRHI {
 public:
     VulkanRHI();
 
-    Shader createShader(const std::vector<uint32_t> &code);
+    Shader createShader(const std::vector<uint32_t> &code, ShaderType type);
 
     Buffer createBuffer(size_t size, const BufferInfo &info);
 
@@ -117,6 +133,10 @@ public:
     vk::Extent2D getExtent();
 
     RenderTarget beginFrame();
+
+    DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline);
+
+    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size);
 
     void endFrame();
 
@@ -140,6 +160,8 @@ private:
 
     vkr::CommandPool m_commandPool;
     vkr::CommandBuffers m_commandBuffers;
+
+    vkr::DescriptorPool m_descriptorPool;
 
     vkr::Semaphore m_imageAvailableSemaphore;
     vkr::Semaphore m_renderFinishedSemaphore;
