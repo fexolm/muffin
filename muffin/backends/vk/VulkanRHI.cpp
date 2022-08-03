@@ -638,6 +638,10 @@ Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
             break;
         case BufferUsage::Uniform:
             bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
+            break;
+        case BufferUsage::Staging:
+            bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
+            break;
     }
 
     bufferInfo.sharingMode = vk::SharingMode::eExclusive;
@@ -685,6 +689,131 @@ void VulkanRHI::updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size
 
     m_device.updateDescriptorSets(write, {});
 }
+
+Texture VulkanRHI::createTexture(int width, int height) {
+    vk::ImageCreateInfo imageInfo;
+    imageInfo.imageType = vk::ImageType::e2D;
+    imageInfo.extent.width = width;
+    imageInfo.extent.height = height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = vk::Format::eR8G8B8A8Srgb;
+    imageInfo.tiling = vk::ImageTiling::eOptimal;
+    imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+    imageInfo.usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled;
+    imageInfo.sharingMode = vk::SharingMode::eExclusive;
+    imageInfo.samples = vk::SampleCountFlagBits::e1;
+
+    vkr::Image image = m_device.createImage(imageInfo);
+
+    vk::MemoryRequirements memReq = image.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReq.memoryTypeBits,
+                                               vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    vkr::DeviceMemory memory = m_device.allocateMemory(allocInfo);
+
+    image.bindMemory(*memory, 0);
+
+    return Texture{std::move(image), std::move(memory)};
+}
+
+void VulkanRHI::copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size) {
+    auto cmdList = createCommandList();
+    cmdList.begin();
+
+    vk::BufferCopy copyRegion;
+    copyRegion.size = size;
+
+    cmdList.commandBuffer.copyBuffer(*srcBuffer.buffer, *dstBuffer.buffer, copyRegion);
+
+    cmdList.end();
+    submitAndWaitIdle(cmdList);
+}
+
+void VulkanRHI::transitionImageLayout(const vkr::Image &img, vk::Format format, vk::ImageLayout oldLayout,
+                                      vk::ImageLayout newLayout) {
+    auto cmdList = createCommandList();
+    cmdList.begin();
+
+    vk::PipelineStageFlags sourceStage;
+    vk::PipelineStageFlags destStage;
+
+    vk::ImageMemoryBarrier barrier;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = *img;
+    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal) {
+        barrier.srcAccessMask = (vk::AccessFlagBits) 0;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+        sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        destStage = vk::PipelineStageFlagBits::eTransfer;
+    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal &&
+               newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        sourceStage = vk::PipelineStageFlagBits::eTransfer;
+        destStage = vk::PipelineStageFlagBits::eFragmentShader;
+    } else {
+        throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    cmdList.commandBuffer.pipelineBarrier(sourceStage, destStage,
+                                          (vk::DependencyFlagBits) 0, {}, {}, barrier);
+
+    cmdList.end();
+    submitAndWaitIdle(cmdList);
+}
+
+void VulkanRHI::copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_t width, uint32_t height) {
+    transitionImageLayout(texture.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eTransferDstOptimal);
+
+    auto cmdList = createCommandList();
+    cmdList.begin();
+
+    vk::BufferImageCopy region;
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = vk::Offset3D{0, 0, 0};
+    region.imageExtent = vk::Extent3D{width, height, 1};
+
+    cmdList.commandBuffer.copyBufferToImage(*buf.buffer, *texture.image, vk::ImageLayout::eTransferDstOptimal, region);
+
+    cmdList.end();
+    submitAndWaitIdle(cmdList);
+
+    transitionImageLayout(texture.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
+                          vk::ImageLayout::eShaderReadOnlyOptimal);
+
+}
+
+void VulkanRHI::submitAndWaitIdle(CommandList &commandList) {
+    vk::SubmitInfo submitInfo;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &*commandList.commandBuffer;
+    m_graphicsQueue.submit({submitInfo}, nullptr);
+    m_device.waitIdle();
+}
+
 
 Window::Window() {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);

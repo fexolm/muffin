@@ -43,6 +43,7 @@ enum class BufferUsage {
     Vertex,
     Index,
     Uniform,
+    Staging,
 };
 
 struct BufferInfo {
@@ -76,6 +77,11 @@ struct GraphicsPipeline {
 
 struct DescriptorSet {
     vkr::DescriptorSet descriptorSet;
+};
+
+struct Texture {
+    vkr::Image image;
+    vkr::DeviceMemory memory;
 };
 
 struct CommandList {
@@ -126,6 +132,8 @@ public:
 
     void submit(CommandList &commandList);
 
+    void submitAndWaitIdle(CommandList &commandList);
+
     vk::RenderPass createRenderPass();
 
     vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget);
@@ -136,11 +144,20 @@ public:
 
     DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline);
 
+    Texture createTexture(int width, int height);
+
+    void copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size);
+
+    void copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_t width, uint32_t height);
+
     void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, int size);
 
     void endFrame();
 
 private:
+    void transitionImageLayout(const vkr::Image &img, vk::Format format, vk::ImageLayout oldLayout,
+                               vk::ImageLayout newLayout);
+
     Window m_window;
     vkr::Context m_context;
     vkr::Instance m_instance;

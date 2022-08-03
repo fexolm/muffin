@@ -4,6 +4,7 @@
 #include <glm/matrix.hpp>
 #include <glm/geometric.hpp>
 #include <glm/ext.hpp>
+#include "stb_image.h"
 
 static std::vector<uint32_t> readFile(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -25,11 +26,6 @@ struct UniformBufferObject {
     glm::mat4 view;
     glm::mat4 proj;
 };
-
-void updateUniformBuffer(uint32_t currentImage) {
-
-
-}
 
 int main() {
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -69,10 +65,22 @@ int main() {
     auto indexBuf = rhi.createBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
     indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
+    int texWidth, texHeight, texChannels;
+    stbi_uc *pixels = stbi_load("texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+
+    auto imgBuffer = rhi.createBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
+    imgBuffer.fill(pixels, texWidth * texHeight * 4);
+    stbi_image_free(pixels);
+
+    auto texture = rhi.createTexture(texWidth, texHeight);
+
+    rhi.copyBufferToTexture(imgBuffer, texture, texWidth, texHeight);
+
+
     while (true) {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-        
+
         auto uniformBuffer = rhi.createBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
         auto descriptorSet = rhi.createDescriptorSet(pipeline);
         rhi.updateDescriptorSet(descriptorSet, uniformBuffer, sizeof(UniformBufferObject));
