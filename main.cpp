@@ -37,17 +37,32 @@ int main() {
 
     UniformBufferObject ubo{};
 
-    const std::vector<Vertex> vertices = {
-            {{-0.5f, -0.5f, 0.0f},  {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-            {{0.5f,  -0.5f, 0.0f},  {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-            {{0.5f,  0.5f,  0.0f},  {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-            {{-0.5f, 0.5f,  0.0f},  {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+    const std::vector<glm::vec3> positions = {{-0.5f, -0.5f, 0.0f},
+                                              {0.5f,  -0.5f, 0.0f},
+                                              {0.5f,  0.5f,  0.0f},
+                                              {-0.5f, 0.5f,  0.0f},
+                                              {-0.5f, -0.5f, -0.5f},
+                                              {0.5f,  -0.5f, -0.5f},
+                                              {0.5f,  0.5f,  -0.5f},
+                                              {-0.5f, 0.5f,  -0.5f}};
 
-            {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-            {{0.5f,  -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-            {{0.5f,  0.5f,  -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-            {{-0.5f, 0.5f,  -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-    };
+    const std::vector<glm::vec3> colors = {{1.0f, 0.0f, 0.0f},
+                                           {0.0f, 1.0f, 0.0f},
+                                           {0.0f, 0.0f, 1.0f},
+                                           {1.0f, 1.0f, 1.0f},
+                                           {1.0f, 0.0f, 0.0f},
+                                           {0.0f, 1.0f, 0.0f},
+                                           {0.0f, 0.0f, 1.0f},
+                                           {1.0f, 1.0f, 1.0f}};
+
+    const std::vector<glm::vec2> texCoords = {{0.0f, 0.0f},
+                                              {1.0f, 0.0f},
+                                              {1.0f, 1.0f},
+                                              {0.0f, 1.0f},
+                                              {0.0f, 0.0f},
+                                              {1.0f, 0.0f},
+                                              {1.0f, 1.0f},
+                                              {0.0f, 1.0f}};
 
     const std::vector<uint16_t> indices = {
             0, 1, 2, 2, 3, 0,
@@ -65,8 +80,14 @@ int main() {
 
     // auto renderTarget = rhi.getNextRenderTarget();
 
-    auto vertexBuf = rhi.createBuffer(vertices.size() * sizeof(Vertex), BufferInfo{BufferUsage::Vertex});
-    vertexBuf.fill((void *) vertices.data(), vertices.size() * sizeof(Vertex));
+    auto posBuf = rhi.createBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    posBuf.fill((void *) positions.data(), positions.size() * sizeof(glm::vec3));
+
+    auto colorsBuf = rhi.createBuffer(colors.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    colorsBuf.fill((void *) colors.data(), colors.size() * sizeof(glm::vec3));
+
+    auto texCoordsBuf = rhi.createBuffer(texCoords.size() * sizeof(glm::vec2), BufferInfo{BufferUsage::Vertex});
+    texCoordsBuf.fill((void *) texCoords.data(), texCoords.size() * sizeof(glm::vec2));
 
     auto indexBuf = rhi.createBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
     indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
@@ -104,7 +125,11 @@ int main() {
         commandList.begin();
         commandList.beginRenderPass(renderTarget);
         commandList.bindPipeline(pipeline);
-        commandList.bindVertexBuffer(vertexBuf);
+        
+        commandList.bindVertexBuffer(posBuf, 0);
+        commandList.bindVertexBuffer(colorsBuf, 1);
+        commandList.bindVertexBuffer(texCoordsBuf, 2);
+
         commandList.bindIndexBuffer(indexBuf);
         commandList.bindDescriptorSet(pipeline, descriptorSet);
         commandList.setViewport();

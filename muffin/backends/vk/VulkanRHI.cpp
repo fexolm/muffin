@@ -494,38 +494,11 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    vk::VertexInputBindingDescription bindingDescription;
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
-    bindingDescription.inputRate = vk::VertexInputRate::eVertex;
-
-    vk::VertexInputAttributeDescription posDescription;
-    posDescription.binding = 0;
-    posDescription.location = 0;
-    posDescription.format = vk::Format::eR32G32B32Sfloat;
-    posDescription.offset = offsetof(Vertex, pos);
-
-    vk::VertexInputAttributeDescription colorDescription;
-    colorDescription.binding = 0;
-    colorDescription.location = 1;
-    colorDescription.format = vk::Format::eR32G32B32Sfloat;
-    colorDescription.offset = offsetof(Vertex, color);
-
-    vk::VertexInputAttributeDescription texCoordDescription;
-    texCoordDescription.binding = 0;
-    texCoordDescription.location = 2;
-    texCoordDescription.format = vk::Format::eR32G32Sfloat;
-    texCoordDescription.offset = offsetof(Vertex, texCoord);
-
-    vk::VertexInputAttributeDescription attributeDescriptions[] = {
-            posDescription, colorDescription, texCoordDescription
-    };
-
     vk::PipelineVertexInputStateCreateInfo vertexInput;
-    vertexInput.vertexBindingDescriptionCount = 1;
-    vertexInput.pVertexBindingDescriptions = &bindingDescription;
-    vertexInput.vertexAttributeDescriptionCount = 3;
-    vertexInput.pVertexAttributeDescriptions = attributeDescriptions;
+    vertexInput.vertexBindingDescriptionCount = info.vertexShader->vertexBindings.size();
+    vertexInput.pVertexBindingDescriptions = info.vertexShader->vertexBindings.data();
+    vertexInput.vertexAttributeDescriptionCount = info.vertexShader->vertexAttributes.size();
+    vertexInput.pVertexAttributeDescriptions = info.vertexShader->vertexAttributes.data();
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
     inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -724,6 +697,88 @@ VulkanRHI::VulkanRHI() :
 
 #include <iostream>
 
+static inline vk::Format toVkBufferFormat(VertexElementType Type) {
+    switch (Type) {
+        case Float1:
+            return vk::Format::eR32Sfloat;
+        case Float2:
+            return vk::Format::eR32G32Sfloat;
+        case Float3:
+            return vk::Format::eR32G32B32Sfloat;
+        case PackedNormal:
+            return vk::Format::eR8G8B8A8Snorm;
+        case UByte4:
+            return vk::Format::eR8G8B8A8Uint;
+        case UByte4N:
+            return vk::Format::eR8G8B8A8Unorm;
+        case Color:
+            return vk::Format::eB8G8R8A8Unorm;
+        case Short2:
+            return vk::Format::eR16G16Sint;
+        case Short4:
+            return vk::Format::eR16G16B16A16Sint;
+        case Short2N:
+            return vk::Format::eR16G16Snorm;
+        case Half2:
+            return vk::Format::eR16G16Sfloat;
+        case Half4:
+            return vk::Format::eR16G16B16A16Sfloat;
+        case Short4N:        // 4 X 16 bit word: normalized
+            return vk::Format::eR16G16B16A16Snorm;
+        case UShort2:
+            return vk::Format::eR16G16Uint;
+        case UShort4:
+            return vk::Format::eR16G16B16A16Uint;
+        case UShort2N:        // 16 bit word normalized to (value/65535.0:value/65535.0:0:0:1)
+            return vk::Format::eR16G16Unorm;
+        case UShort4N:        // 4 X 16 bit word unsigned: normalized
+            return vk::Format::eR16G16B16A16Unorm;
+        case Float4:
+            return vk::Format::eR32G32B32A32Sfloat;
+        case URGB10A2N:
+            return vk::Format::eA2B10G10R10UnormPack32;
+        case UInt:
+            return vk::Format::eR32Uint;
+        default:
+            break;
+    }
+
+    throw std::runtime_error("Undefined vertex-element format conversion");
+}
+
+uint32_t getTypeSize(VertexElementType type) {
+    switch (type) {
+        case VertexElementType::Float1:
+            return 4;
+        case VertexElementType::Float2:
+            return 8;
+        case VertexElementType::Float3:
+            return 12;
+        case VertexElementType::Float4:
+            return 16;
+        default:
+            throw std::runtime_error("Unsuported type");
+    }
+}
+
+VertexElementType spirvToVertexElementType(spirv_cross::SPIRType type) {
+    if (type.basetype == spirv_cross::SPIRType::Float) {
+        if (type.vecsize == 1) {
+            return VertexElementType::Float1;
+        }
+        if (type.vecsize == 2) {
+            return VertexElementType::Float2;
+        }
+        if (type.vecsize == 3) {
+            return VertexElementType::Float3;
+        }
+        if (type.vecsize == 4) {
+            return VertexElementType::Float4;
+        }
+    }
+    return VertexElementType::None;
+}
+
 Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType type) {
     vk::ShaderModuleCreateInfo createInfo;
     createInfo.codeSize = code.size() * sizeof(uint32_t);
@@ -735,6 +790,28 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
     auto resources = comp.get_shader_resources();
 
     auto res = Shader{std::move(shaderMoule)};
+
+    if (type == ShaderType::Vertex) {
+        int i = 0;
+        for (auto &b: resources.stage_inputs) {
+            vk::VertexInputAttributeDescription attributeDescription;
+            attributeDescription.binding = i;
+            attributeDescription.location = comp.get_decoration(b.id, spv::DecorationLocation);
+            attributeDescription.offset = 0;
+            VertexElementType elementType = spirvToVertexElementType(comp.get_type(b.type_id));
+            attributeDescription.format = toVkBufferFormat(elementType);
+
+            vk::VertexInputBindingDescription bindingDescription;
+            bindingDescription.binding = i;
+            bindingDescription.stride = getTypeSize(elementType);
+            bindingDescription.inputRate = vk::VertexInputRate::eVertex;
+
+            res.vertexAttributes.push_back(attributeDescription);
+            res.vertexBindings.push_back(bindingDescription);
+
+            i++;
+        }
+    }
 
     for (auto &ub: resources.uniform_buffers) {
         //auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
@@ -1072,8 +1149,8 @@ void CommandList::endRenderPass() {
     commandBuffer.endRenderPass();
 }
 
-void CommandList::bindVertexBuffer(const Buffer &buf) {
-    commandBuffer.bindVertexBuffers(0, {*buf.buffer}, {0});
+void CommandList::bindVertexBuffer(const Buffer &buf, int binding) {
+    commandBuffer.bindVertexBuffers(binding, {*buf.buffer}, {0});
 }
 
 void CommandList::bindIndexBuffer(const Buffer &buf) {
