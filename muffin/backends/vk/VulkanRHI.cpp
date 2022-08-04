@@ -256,10 +256,10 @@ vkr::DescriptorPool createDescriptorPool(const vkr::Device &device) {
     return descriptorPool;
 }
 
-Texture
-createImage(const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice, uint32_t width, uint32_t height,
-            vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-            vk::MemoryPropertyFlags memoryPorperties, vk::ImageAspectFlagBits aspectMask) {
+Image
+createImageImpl(const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice, uint32_t width, uint32_t height,
+                vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+                vk::MemoryPropertyFlags memoryPorperties, vk::ImageAspectFlagBits aspectMask) {
     vk::ImageCreateInfo imageInfo;
     imageInfo.imageType = vk::ImageType::e2D;
     imageInfo.extent.width = width;
@@ -298,7 +298,7 @@ createImage(const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice
 
     vkr::ImageView view = device.createImageView(viewInfo);
 
-    return Texture{std::move(image), std::move(memory), std::move(view)};
+    return Image{std::move(image), std::move(memory), std::move(view)};
 }
 
 vkr::DescriptorSetLayout
@@ -312,10 +312,10 @@ createDescriptorSetLayout(const vkr::Device &device, const std::vector<vk::Descr
 }
 
 vkr::PipelineLayout
-createPipelineLayout(const vkr::Device &device, const vkr::DescriptorSetLayout &descriptorSetLayout) {
+createPipelineLayout(const vkr::Device &device, const std::vector<vk::DescriptorSetLayout> &descriptorSetLayouts) {
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &*descriptorSetLayout;
+    pipelineLayoutInfo.setLayoutCount = descriptorSetLayouts.size();
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -407,20 +407,24 @@ vk::Format findDepthFormat(const vkr::PhysicalDevice &physicalDevice) {
                                vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 }
 
-Texture
+Image
 createDepthImage(VulkanRHI &rhi, const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice, uint32_t width,
                  uint32_t height) {
     vk::Format depthFormat = findDepthFormat(physicalDevice);
-    Texture texture = createImage(device, physicalDevice, width, height, depthFormat, vk::ImageTiling::eOptimal,
+    Image image = createImageImpl(device, physicalDevice, width, height, depthFormat, vk::ImageTiling::eOptimal,
                                   vk::ImageUsageFlagBits::eDepthStencilAttachment,
                                   vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eDepth);
 
-    transitionImageLayout(rhi, texture.image, depthFormat, vk::ImageLayout::eUndefined,
+    transitionImageLayout(rhi, image.image, depthFormat, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eDepthStencilAttachmentOptimal);
-    return texture;
+    return image;
 }
 
-vk::RenderPass VulkanRHI::createRenderPass() {
+vk::RenderPass VulkanRHI::createRenderPass(int imgIdx) {
+    if(m_renderPassCache.count(imgIdx)) {
+        return *m_renderPassCache.at(imgIdx);
+    }
+
     vk::AttachmentDescription colorAttachment;
     colorAttachment.format = m_surfaceFormat.format;
     colorAttachment.samples = vk::SampleCountFlagBits::e1;
@@ -449,7 +453,6 @@ vk::RenderPass VulkanRHI::createRenderPass() {
     depthAttachmentRef.attachment = 1;
     depthAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-
     vk::SubpassDescription subpass;
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
     subpass.colorAttachmentCount = 1;
@@ -461,7 +464,7 @@ vk::RenderPass VulkanRHI::createRenderPass() {
     dependency.dstSubpass = 0;
     dependency.srcStageMask =
             vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
-    //dependency.srcAccessMask = 0;
+    dependency.srcAccessMask = vk::AccessFlagBits::eNone;
 
     dependency.dstStageMask =
             vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
@@ -477,8 +480,9 @@ vk::RenderPass VulkanRHI::createRenderPass() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    m_renderPassCache.emplace_back(m_device, renderPassInfo);
-    return *m_renderPassCache.back();
+    m_renderPassCache.emplace(imgIdx, vkr::RenderPass(m_device, renderPassInfo));
+
+    return *m_renderPassCache.at(imgIdx);
 }
 
 GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateInfo &info) {
@@ -583,15 +587,25 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
     depthStencil.front = vk::StencilOpState{};
     depthStencil.back = vk::StencilOpState{};
 
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
-    bindings.insert(bindings.end(), info.vertexShader->bindings.begin(), info.vertexShader->bindings.end());
-    bindings.insert(bindings.end(), info.fragmentShader->bindings.begin(), info.fragmentShader->bindings.end());
+    std::map<int, std::vector<vk::DescriptorSetLayoutBinding>> bindings;
+    for(auto &[set, b]: info.vertexShader->bindings) {
+        bindings[set].insert(bindings[set].end(), b.begin(), b.end());
+    }
+    for(auto &[set, b]: info.fragmentShader->bindings) {
+        bindings[set].insert(bindings[set].end(), b.begin(), b.end());
+    }
 
-    vkr::DescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(m_device, bindings);
+    std::vector<vkr::DescriptorSetLayout> descriptorSetLayouts;
+    std::vector<vk::DescriptorSetLayout> descriptorSetLayoutHandles;
 
-    vkr::PipelineLayout layout = createPipelineLayout(m_device, descriptorSetLayout);
+    for(auto &[set, b]: bindings) {
+        descriptorSetLayouts.push_back(createDescriptorSetLayout(m_device, b));
+        descriptorSetLayoutHandles.push_back(*descriptorSetLayouts.back());
+    }
 
-    vk::RenderPass renderPass = createRenderPass();
+    vkr::PipelineLayout layout = createPipelineLayout(m_device, descriptorSetLayoutHandles);
+
+    vk::RenderPass renderPass = createRenderPass(0);
 
     vk::GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.stageCount = 2;
@@ -612,11 +626,15 @@ GraphicsPipeline VulkanRHI::createGraphicsPipeline(const GraphicsPipelineCreateI
 
     vkr::Pipeline pipeline(m_device, nullptr, pipelineInfo);
 
-    return GraphicsPipeline{std::move(pipeline), std::move(layout), std::move(descriptorSetLayout)};
+    return GraphicsPipeline{std::move(pipeline), std::move(layout), std::move(descriptorSetLayouts)};
 }
 
 vk::Framebuffer
 VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget) {
+    if(m_frameBuffersCache.count(renderTarget.imageIdx)) {
+        return *m_frameBuffersCache.at(renderTarget.imageIdx);
+    }
+
     vk::ImageView attachments[] = {
             renderTarget.swapchainImg, *m_depthImage.view
     };
@@ -628,8 +646,8 @@ VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass, const RenderTarge
     framebufferInfo.height = m_extent.height;
     framebufferInfo.layers = 1;
 
-    m_frameBuffersCache.emplace_back(m_device, framebufferInfo);
-    return *m_frameBuffersCache.back();
+    m_frameBuffersCache.emplace(renderTarget.imageIdx, vkr::Framebuffer(m_device, framebufferInfo));
+    return *m_frameBuffersCache.at(renderTarget.imageIdx);
 }
 
 VulkanRHI::VulkanRHI() :
@@ -814,8 +832,9 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
     }
 
     for (auto &ub: resources.uniform_buffers) {
-        //auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
         auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+
         vk::DescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
         layoutBinding.descriptorCount = 1;
@@ -830,11 +849,13 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
         }
         layoutBinding.pImmutableSamplers = nullptr;
 
-        res.bindings.push_back(layoutBinding);
+        res.bindings[set].push_back(layoutBinding);
     }
 
     for (auto &ub: resources.sampled_images) {
         auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+
         vk::DescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
         layoutBinding.descriptorCount = 1;
@@ -849,7 +870,7 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
                 break;
         }
         layoutBinding.pImmutableSamplers = nullptr;
-        res.bindings.push_back(layoutBinding);
+        res.bindings[set].push_back(layoutBinding);
     }
 
     return res;
@@ -884,7 +905,7 @@ RenderTarget VulkanRHI::beginFrame() {
     m_device.resetFences({*m_inFlightFence});
     m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphore, nullptr).second;
 
-    return RenderTarget{*m_swapchainImageViews[m_currentSwapchainImgIdx]};
+    return RenderTarget{*m_swapchainImageViews[m_currentSwapchainImgIdx], m_currentSwapchainImgIdx};
 }
 
 void VulkanRHI::endFrame() {
@@ -939,49 +960,18 @@ Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
     return Buffer{std::move(buffer), std::move(memory)};
 }
 
-DescriptorSet VulkanRHI::createDescriptorSet(const GraphicsPipeline &pipeline) {
+DescriptorSet VulkanRHI::createDescriptorSet(const GraphicsPipeline &pipeline, int num) {
     vk::DescriptorSetAllocateInfo allocInfo;
     allocInfo.descriptorPool = *m_descriptorPool;
     allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &*pipeline.descriptorSetLayout;
+    allocInfo.pSetLayouts = &*pipeline.descriptorSetLayouts[num];
     std::vector<vkr::DescriptorSet> descriptorSets = m_device.allocateDescriptorSets(allocInfo);
 
-    return DescriptorSet{std::move(descriptorSets[0])};
+    return DescriptorSet{std::move(descriptorSets[0]), &m_device};
 }
 
-void VulkanRHI::updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Texture &texture, Sampler &sampler, int size) {
-    vk::DescriptorBufferInfo bufferInfo;
-    bufferInfo.buffer = *buffer.buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = size;
-
-    vk::DescriptorImageInfo imageInfo;
-    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    imageInfo.imageView = *texture.view;
-    imageInfo.sampler = *sampler.sampler;
-
-    vk::WriteDescriptorSet writes[2];
-    writes[0].dstSet = *set.descriptorSet;
-    writes[0].dstBinding = 0;
-    writes[0].dstArrayElement = 0;
-    writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-    writes[0].descriptorCount = 1;
-    writes[0].pBufferInfo = &bufferInfo;
-    writes[0].pImageInfo = nullptr;
-    writes[0].pTexelBufferView = nullptr;
-
-    writes[1].dstSet = *set.descriptorSet;
-    writes[1].dstBinding = 1;
-    writes[1].dstArrayElement = 0;
-    writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    writes[1].descriptorCount = 1;
-    writes[1].pImageInfo = &imageInfo;
-
-    m_device.updateDescriptorSets(writes, {});
-}
-
-Texture VulkanRHI::createTexture(uint32_t width, uint32_t height) {
-    return createImage(m_device, m_physicalDevice, width, height, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
+Image VulkanRHI::createImage(uint32_t width, uint32_t height) {
+    return createImageImpl(m_device, m_physicalDevice, width, height, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
                        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                        vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
 }
@@ -999,8 +989,8 @@ void VulkanRHI::copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size)
     submitAndWaitIdle(cmdList);
 }
 
-void VulkanRHI::copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_t width, uint32_t height) {
-    transitionImageLayout(*this, texture.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
+void VulkanRHI::copyBufferToImage(const Buffer &buf, Image &image, uint32_t width, uint32_t height) {
+    transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eTransferDstOptimal);
 
     auto cmdList = createCommandList();
@@ -1018,12 +1008,12 @@ void VulkanRHI::copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_
     region.imageOffset = vk::Offset3D{0, 0, 0};
     region.imageExtent = vk::Extent3D{width, height, 1};
 
-    cmdList.commandBuffer.copyBufferToImage(*buf.buffer, *texture.image, vk::ImageLayout::eTransferDstOptimal, region);
+    cmdList.commandBuffer.copyBufferToImage(*buf.buffer, *image.image, vk::ImageLayout::eTransferDstOptimal, region);
 
     cmdList.end();
     submitAndWaitIdle(cmdList);
 
-    transitionImageLayout(*this, texture.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
+    transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
                           vk::ImageLayout::eShaderReadOnlyOptimal);
 
 }
@@ -1058,6 +1048,10 @@ Sampler VulkanRHI::createSampler() {
     return Sampler{std::move(sampler)};
 }
 
+void VulkanRHI::waitIdle() {
+    m_device.waitIdle();
+}
+
 
 Window::Window() {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
@@ -1090,7 +1084,7 @@ void CommandList::end() {
 
 void CommandList::beginRenderPass(const RenderTarget &renderTarget) {
 
-    vk::RenderPass renderPass = rhi->createRenderPass();
+    vk::RenderPass renderPass = rhi->createRenderPass(renderTarget.imageIdx);
     vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass, renderTarget);
 
     vk::RenderPassBeginInfo renderPassBeginInfo;
@@ -1157,15 +1151,15 @@ void CommandList::bindIndexBuffer(const Buffer &buf) {
     commandBuffer.bindIndexBuffer(*buf.buffer, 0, vk::IndexType::eUint16);
 }
 
-void CommandList::bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set) {
-    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline.layout, 0, *set.descriptorSet,
+void CommandList::bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set, int binding) {
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline.layout, binding, *set.descriptorSet,
                                      {});
 }
 
 GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
-                                   vkr::DescriptorSetLayout &&descriptorSetLayout)
+                                   std::vector<vkr::DescriptorSetLayout> &&descriptorSetLayouts)
         : pipeline(
-        std::move(pipeline)), layout(std::move(layout)), descriptorSetLayout(std::move(descriptorSetLayout)) {
+        std::move(pipeline)), layout(std::move(layout)), descriptorSetLayouts(std::move(descriptorSetLayouts)) {
 
 }
 
@@ -1173,4 +1167,40 @@ void Buffer::fill(void *data, size_t size) {
     void *devicePtr = memory.mapMemory(0, size);
     memcpy(devicePtr, data, size);
     memory.unmapMemory();
+}
+
+void DescriptorSet::update(int binding, Buffer &buffer, int size) {
+    vk::DescriptorBufferInfo bufferInfo;
+    bufferInfo.buffer = *buffer.buffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = size;
+
+    vk::WriteDescriptorSet write;
+    write.dstSet = *descriptorSet;
+    write.dstBinding = binding;
+    write.dstArrayElement = 0;
+    write.descriptorType = vk::DescriptorType::eUniformBuffer;
+    write.descriptorCount = 1;
+    write.pBufferInfo = &bufferInfo;
+    write.pImageInfo = nullptr;
+    write.pTexelBufferView = nullptr;
+
+    device->updateDescriptorSets(write, {});
+}
+
+void DescriptorSet::update(int binding, Image &image, Sampler &sampler) {
+    vk::DescriptorImageInfo imageInfo;
+    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    imageInfo.imageView = *image.view;
+    imageInfo.sampler = *sampler.sampler;
+
+    vk::WriteDescriptorSet write;
+    write.dstSet = *descriptorSet;
+    write.dstBinding = binding;
+    write.dstArrayElement = 0;
+    write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    write.descriptorCount = 1;
+    write.pImageInfo = &imageInfo;
+
+    device->updateDescriptorSets(write, {});
 }

@@ -2,9 +2,11 @@
 #include <fstream>
 #include <chrono>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/geometric.hpp>
@@ -37,37 +39,28 @@ int main() {
 
     UniformBufferObject ubo{};
 
-    const std::vector<glm::vec3> positions = {{-0.5f, -0.5f, 0.0f},
-                                              {0.5f,  -0.5f, 0.0f},
-                                              {0.5f,  0.5f,  0.0f},
-                                              {-0.5f, 0.5f,  0.0f},
-                                              {-0.5f, -0.5f, -0.5f},
-                                              {0.5f,  -0.5f, -0.5f},
-                                              {0.5f,  0.5f,  -0.5f},
-                                              {-0.5f, 0.5f,  -0.5f}};
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
 
-    const std::vector<glm::vec3> colors = {{1.0f, 0.0f, 0.0f},
-                                           {0.0f, 1.0f, 0.0f},
-                                           {0.0f, 0.0f, 1.0f},
-                                           {1.0f, 1.0f, 1.0f},
-                                           {1.0f, 0.0f, 0.0f},
-                                           {0.0f, 1.0f, 0.0f},
-                                           {0.0f, 0.0f, 1.0f},
-                                           {1.0f, 1.0f, 1.0f}};
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "viking_room.obj")) {
+        throw std::runtime_error(warn + err);
+    }
 
-    const std::vector<glm::vec2> texCoords = {{0.0f, 0.0f},
-                                              {1.0f, 0.0f},
-                                              {1.0f, 1.0f},
-                                              {0.0f, 1.0f},
-                                              {0.0f, 0.0f},
-                                              {1.0f, 0.0f},
-                                              {1.0f, 1.0f},
-                                              {0.0f, 1.0f}};
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> colors;
+    std::vector<glm::vec2> texCoords;
+    std::vector<uint16_t> indices;
 
-    const std::vector<uint16_t> indices = {
-            0, 1, 2, 2, 3, 0,
-            4, 5, 6, 6, 7, 4
-    };
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            positions.emplace_back(attrib.vertices[3 * index.vertex_index + 0], attrib.vertices[3 * index.vertex_index + 1], attrib.vertices[3 * index.vertex_index + 2]);
+            colors.emplace_back(1.0f, 1.0f, 1.0f);
+            texCoords.emplace_back(attrib.texcoords[2 * index.texcoord_index + 0], 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]);
+            indices.push_back(indices.size());
+        }
+    }
 
     VulkanRHI rhi;
     auto vert = rhi.createShader(readFile("vert.spv"), ShaderType::Vertex);
@@ -77,8 +70,6 @@ int main() {
     pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
     GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
-
-    // auto renderTarget = rhi.getNextRenderTarget();
 
     auto posBuf = rhi.createBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
     posBuf.fill((void *) positions.data(), positions.size() * sizeof(glm::vec3));
@@ -93,25 +84,34 @@ int main() {
     indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
     int texWidth, texHeight, texChannels;
-    stbi_uc *pixels = stbi_load("texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    stbi_uc *pixels = stbi_load("viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
     auto imgBuffer = rhi.createBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
     imgBuffer.fill(pixels, texWidth * texHeight * 4);
     stbi_image_free(pixels);
 
-    auto texture = rhi.createTexture(texWidth, texHeight);
+    auto texture = rhi.createImage(texWidth, texHeight);
 
-    rhi.copyBufferToTexture(imgBuffer, texture, texWidth, texHeight);
+    rhi.copyBufferToImage(imgBuffer, texture, texWidth, texHeight);
 
     Sampler sampler = rhi.createSampler();
 
+    auto textureDescriptorSet = rhi.createDescriptorSet(pipeline, 1);
+    textureDescriptorSet.update(0, texture, sampler);
+
+    auto uboDescriptorSet = rhi.createDescriptorSet(pipeline, 0);
+
     while (true) {
+
+        SDL_Event e;
+        SDL_PollEvent(&e);
+
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         auto uniformBuffer = rhi.createBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
-        auto descriptorSet = rhi.createDescriptorSet(pipeline);
-        rhi.updateDescriptorSet(descriptorSet, uniformBuffer, texture, sampler, sizeof(UniformBufferObject));
+
+        uboDescriptorSet.update(0, uniformBuffer, sizeof(UniformBufferObject));
 
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -125,13 +125,14 @@ int main() {
         commandList.begin();
         commandList.beginRenderPass(renderTarget);
         commandList.bindPipeline(pipeline);
-        
+
         commandList.bindVertexBuffer(posBuf, 0);
         commandList.bindVertexBuffer(colorsBuf, 1);
         commandList.bindVertexBuffer(texCoordsBuf, 2);
 
         commandList.bindIndexBuffer(indexBuf);
-        commandList.bindDescriptorSet(pipeline, descriptorSet);
+        commandList.bindDescriptorSet(pipeline, uboDescriptorSet, 0);
+        commandList.bindDescriptorSet(pipeline, textureDescriptorSet, 1);
         commandList.setViewport();
         commandList.setScissors();
         commandList.drawIndexed(indices.size(), 1, 0, 0, 0);

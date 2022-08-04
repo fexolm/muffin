@@ -7,6 +7,7 @@
 #include <glm/vec3.hpp>
 
 #include <memory>
+#include <map>
 
 namespace vkr = vk::raii;
 
@@ -37,7 +38,7 @@ struct Shader {
 
     vkr::ShaderModule module;
 
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    std::map<int, std::vector<vk::DescriptorSetLayoutBinding>> bindings;
     std::vector<vk::VertexInputAttributeDescription> vertexAttributes;
     std::vector<vk::VertexInputBindingDescription> vertexBindings;
 };
@@ -94,22 +95,19 @@ struct GraphicsPipelineCreateInfo {
 
 struct RenderTarget {
     vk::ImageView swapchainImg;
+    uint32_t imageIdx;
 };
 
 struct GraphicsPipeline {
     GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
-                     vkr::DescriptorSetLayout &&descriptorSetLayout);
+                     std::vector<vkr::DescriptorSetLayout> &&descriptorSetLayouts);
 
     vkr::PipelineLayout layout;
     vkr::Pipeline pipeline;
-    vkr::DescriptorSetLayout descriptorSetLayout;
+    std::vector<vkr::DescriptorSetLayout> descriptorSetLayouts;
 };
 
-struct DescriptorSet {
-    vkr::DescriptorSet descriptorSet;
-};
-
-struct Texture {
+struct Image {
     vkr::Image image;
     vkr::DeviceMemory memory;
     vkr::ImageView view;
@@ -117,6 +115,14 @@ struct Texture {
 
 struct Sampler {
     vkr::Sampler sampler;
+};
+
+struct DescriptorSet {
+    vkr::DescriptorSet descriptorSet;
+    vkr::Device *device;
+
+    void update(int binding, Buffer &buffer, int size);
+    void update(int binding, Image &image, Sampler &sampler);
 };
 
 struct CommandList {
@@ -145,7 +151,7 @@ struct CommandList {
 
     void bindIndexBuffer(const Buffer &buf);
 
-    void bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set);
+    void bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set, int binding);
 
     class VulkanRHI *rhi;
 
@@ -169,7 +175,7 @@ public:
 
     void submitAndWaitIdle(CommandList &commandList);
 
-    vk::RenderPass createRenderPass();
+    vk::RenderPass createRenderPass(int imgIdx);
 
     vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget);
 
@@ -177,19 +183,21 @@ public:
 
     RenderTarget beginFrame();
 
-    DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline);
+    DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline, int num);
 
-    Texture createTexture(uint32_t width, uint32_t height);
+    Image createImage(uint32_t width, uint32_t height);
 
     Sampler createSampler();
 
     void copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size);
 
-    void copyBufferToTexture(const Buffer &buf, Texture &texture, uint32_t width, uint32_t height);
+    void copyBufferToImage(const Buffer &buf, Image &image, uint32_t width, uint32_t height);
 
-    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Texture &texture, Sampler &sampler, int size);
+    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Image &image, Sampler &sampler, int size);
 
     void endFrame();
+
+    void waitIdle();
 
 private:
     Window m_window;
@@ -218,10 +226,10 @@ private:
     vkr::Semaphore m_renderFinishedSemaphore;
     vkr::Fence m_inFlightFence;
 
-    std::vector<vkr::Framebuffer> m_frameBuffersCache;
-    std::vector<vkr::RenderPass> m_renderPassCache;
+    std::unordered_map<int, vkr::Framebuffer> m_frameBuffersCache;
+    std::unordered_map<int, vkr::RenderPass> m_renderPassCache;
 
     uint32_t m_currentSwapchainImgIdx;
 
-    Texture m_depthImage;
+    Image m_depthImage;
 };
