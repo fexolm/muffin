@@ -8,9 +8,10 @@
 
 #include <memory>
 #include <map>
+#include <unordered_map>
+#include "RHI.h"
 
 namespace vkr = vk::raii;
-
 
 struct Window {
     SDL_Window *window;
@@ -70,24 +71,6 @@ enum VertexElementType {
     NumBits = 5,
 };
 
-enum class BufferUsage {
-    Vertex,
-    Index,
-    Uniform,
-    Staging,
-};
-
-struct BufferInfo {
-    BufferUsage usage;
-};
-
-struct Buffer {
-    vkr::Buffer buffer;
-    vkr::DeviceMemory memory;
-
-    void fill(void *data, size_t size);
-};
-
 struct GraphicsPipelineCreateInfo {
     std::shared_ptr<Shader> vertexShader;
     std::shared_ptr<Shader> fragmentShader;
@@ -105,24 +88,6 @@ struct GraphicsPipeline {
     vkr::PipelineLayout layout;
     vkr::Pipeline pipeline;
     std::vector<vkr::DescriptorSetLayout> descriptorSetLayouts;
-};
-
-struct Image {
-    vkr::Image image;
-    vkr::DeviceMemory memory;
-    vkr::ImageView view;
-};
-
-struct Sampler {
-    vkr::Sampler sampler;
-};
-
-struct DescriptorSet {
-    vkr::DescriptorSet descriptorSet;
-    vkr::Device *device;
-
-    void update(int binding, Buffer &buffer, int size);
-    void update(int binding, Image &image, Sampler &sampler);
 };
 
 struct CommandList {
@@ -147,16 +112,20 @@ struct CommandList {
 
     void endRenderPass();
 
-    void bindVertexBuffer(const Buffer &buf, int binding);
+    void BindVertexBuffer(const RHIBufferRef &buf, int binding);
 
-    void bindIndexBuffer(const Buffer &buf);
+    void BindIndexBuffer(const RHIBufferRef &buf);
 
-    void bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set, int binding);
+    void BindDescriptorSet(const GraphicsPipeline &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding);
 
     class VulkanRHI *rhi;
 
     vkr::CommandBuffer commandBuffer;
+
+    std::vector<RHIResourceRef> ownedResources;
 };
+
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 class VulkanRHI {
 
@@ -165,7 +134,7 @@ public:
 
     Shader createShader(const std::vector<uint32_t> &code, ShaderType type);
 
-    Buffer createBuffer(size_t size, const BufferInfo &info);
+    RHIBufferRef CreateBuffer(size_t size, const BufferInfo &info);
 
     GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
@@ -183,17 +152,13 @@ public:
 
     RenderTarget beginFrame();
 
-    DescriptorSet createDescriptorSet(const GraphicsPipeline &pipeline, int num);
+    RHIDescriptorSetRef CreateDescriptorSet(const GraphicsPipeline &pipeline, int num);
 
     Image createImage(uint32_t width, uint32_t height);
 
     Sampler createSampler();
 
-    void copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size);
-
-    void copyBufferToImage(const Buffer &buf, Image &image, uint32_t width, uint32_t height);
-
-    void updateDescriptorSet(DescriptorSet &set, Buffer &buffer, Image &image, Sampler &sampler, int size);
+    void CopyBufferToImage(const RHIBufferRef &buf, Image &image, uint32_t width, uint32_t height);
 
     void endFrame();
 
@@ -222,14 +187,17 @@ private:
 
     vkr::DescriptorPool m_descriptorPool;
 
-    vkr::Semaphore m_imageAvailableSemaphore;
-    vkr::Semaphore m_renderFinishedSemaphore;
-    vkr::Fence m_inFlightFence;
+    vkr::Semaphore m_imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT];
+    vkr::Semaphore m_renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
+    vkr::Fence m_inFlightFences[MAX_FRAMES_IN_FLIGHT];
 
     std::unordered_map<int, vkr::Framebuffer> m_frameBuffersCache;
     std::unordered_map<int, vkr::RenderPass> m_renderPassCache;
 
     uint32_t m_currentSwapchainImgIdx;
+    uint32_t m_currentFrame;
 
     Image m_depthImage;
+
+    std::unordered_multimap<int, CommandList> m_inFlightCommandLists;
 };

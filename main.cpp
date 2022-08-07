@@ -71,35 +71,33 @@ int main() {
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
     GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
 
-    auto posBuf = rhi.createBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
-    posBuf.fill((void *) positions.data(), positions.size() * sizeof(glm::vec3));
+    auto posBuf = rhi.CreateBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    posBuf->Write((void *) positions.data(), positions.size() * sizeof(glm::vec3));
 
-    auto colorsBuf = rhi.createBuffer(colors.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
-    colorsBuf.fill((void *) colors.data(), colors.size() * sizeof(glm::vec3));
+    auto colorsBuf = rhi.CreateBuffer(colors.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    colorsBuf->Write((void *) colors.data(), colors.size() * sizeof(glm::vec3));
 
-    auto texCoordsBuf = rhi.createBuffer(texCoords.size() * sizeof(glm::vec2), BufferInfo{BufferUsage::Vertex});
-    texCoordsBuf.fill((void *) texCoords.data(), texCoords.size() * sizeof(glm::vec2));
+    auto texCoordsBuf = rhi.CreateBuffer(texCoords.size() * sizeof(glm::vec2), BufferInfo{BufferUsage::Vertex});
+    texCoordsBuf->Write((void *) texCoords.data(), texCoords.size() * sizeof(glm::vec2));
 
-    auto indexBuf = rhi.createBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
-    indexBuf.fill((void *) indices.data(), indices.size() * sizeof(uint16_t));
+    auto indexBuf = rhi.CreateBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
+    indexBuf->Write((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
     int texWidth, texHeight, texChannels;
     stbi_uc *pixels = stbi_load("viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
-    auto imgBuffer = rhi.createBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
-    imgBuffer.fill(pixels, texWidth * texHeight * 4);
+    auto imgBuffer = rhi.CreateBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
+    imgBuffer->Write(pixels, texWidth * texHeight * 4);
     stbi_image_free(pixels);
 
     auto texture = rhi.createImage(texWidth, texHeight);
 
-    rhi.copyBufferToImage(imgBuffer, texture, texWidth, texHeight);
+    rhi.CopyBufferToImage(imgBuffer, texture, texWidth, texHeight);
 
     Sampler sampler = rhi.createSampler();
 
-    auto textureDescriptorSet = rhi.createDescriptorSet(pipeline, 1);
-    textureDescriptorSet.update(0, texture, sampler);
-
-    auto uboDescriptorSet = rhi.createDescriptorSet(pipeline, 0);
+    auto textureDescriptorSet = rhi.CreateDescriptorSet(pipeline, 1);
+    textureDescriptorSet->Update(0, texture, sampler);
 
     while (true) {
 
@@ -109,16 +107,15 @@ int main() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        auto uniformBuffer = rhi.createBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
-
-        uboDescriptorSet.update(0, uniformBuffer, sizeof(UniformBufferObject));
-
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        uniformBuffer.fill((void *) &ubo, sizeof(UniformBufferObject));
+        auto uboDescriptorSet = rhi.CreateDescriptorSet(pipeline, 0);
+        auto uniformBuffer = rhi.CreateBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
+        uniformBuffer->Write((void *) &ubo, sizeof(UniformBufferObject));
+        uboDescriptorSet->Update(0, uniformBuffer, sizeof(UniformBufferObject));
 
         auto commandList = rhi.createCommandList();
         auto renderTarget = rhi.beginFrame();
@@ -126,13 +123,13 @@ int main() {
         commandList.beginRenderPass(renderTarget);
         commandList.bindPipeline(pipeline);
 
-        commandList.bindVertexBuffer(posBuf, 0);
-        commandList.bindVertexBuffer(colorsBuf, 1);
-        commandList.bindVertexBuffer(texCoordsBuf, 2);
+        commandList.BindVertexBuffer(posBuf, 0);
+        commandList.BindVertexBuffer(colorsBuf, 1);
+        commandList.BindVertexBuffer(texCoordsBuf, 2);
 
-        commandList.bindIndexBuffer(indexBuf);
-        commandList.bindDescriptorSet(pipeline, uboDescriptorSet, 0);
-        commandList.bindDescriptorSet(pipeline, textureDescriptorSet, 1);
+        commandList.BindIndexBuffer(indexBuf);
+        commandList.BindDescriptorSet(pipeline, uboDescriptorSet, 0);
+        commandList.BindDescriptorSet(pipeline, textureDescriptorSet, 1);
         commandList.setViewport();
         commandList.setScissors();
         commandList.drawIndexed(indices.size(), 1, 0, 0, 0);

@@ -6,6 +6,9 @@
 
 #include <limits>
 
+#include "VulkanBuffer.h"
+#include "VulkanDescriptorSet.h"
+
 vkr::Instance createInstance(const vkr::Context &context, const std::vector<const char *> &enabledExtensions) {
     vk::ApplicationInfo applicationInfo;
     applicationInfo.pApplicationName = "Muffin";
@@ -663,9 +666,9 @@ VulkanRHI::VulkanRHI() :
         m_commandPool(nullptr),
         m_commandBuffers(nullptr),
         m_descriptorPool(nullptr),
-        m_imageAvailableSemaphore(nullptr),
-        m_renderFinishedSemaphore(nullptr),
-        m_inFlightFence(nullptr),
+        m_imageAvailableSemaphores{nullptr, nullptr},
+        m_renderFinishedSemaphores{nullptr, nullptr},
+        m_inFlightFences{nullptr, nullptr},
         m_depthImage{nullptr, nullptr, nullptr} {
 
     uint32_t extensionsCount;
@@ -703,12 +706,16 @@ VulkanRHI::VulkanRHI() :
     m_descriptorPool = createDescriptorPool(m_device);
 
     vk::SemaphoreCreateInfo semaphoreInfo;
-    m_imageAvailableSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
-    m_renderFinishedSemaphore = vkr::Semaphore(m_device, semaphoreInfo);
 
     vk::FenceCreateInfo fenceInfo;
     fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
-    m_inFlightFence = vkr::Fence(m_device, fenceInfo);
+
+    for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+        m_imageAvailableSemaphores[i] = vkr::Semaphore(m_device, semaphoreInfo);
+        m_renderFinishedSemaphores[i] = vkr::Semaphore(m_device, semaphoreInfo);
+        m_inFlightFences[i] = vkr::Fence(m_device, fenceInfo);
+    }
+    m_currentFrame = 0;
 
     m_depthImage = createDepthImage(*this, m_device, m_physicalDevice, m_extent.width, m_extent.height);
 }
@@ -878,16 +885,18 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
 
 void VulkanRHI::submit(CommandList &commandList) {
     vk::SubmitInfo submitInfo;
-    vk::Semaphore waitSemaphores[] = {*m_imageAvailableSemaphore};
+    vk::Semaphore waitSemaphores[] = {*m_imageAvailableSemaphores[m_currentFrame]};
     vk::CommandBuffer commandBuffers = {*commandList.commandBuffer};
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
-    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphore};
+    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphores[m_currentFrame]};
     submitInfo.setWaitSemaphores(waitSemaphores)
             .setWaitDstStageMask(waitStages)
             .setCommandBuffers(commandBuffers)
             .setSignalSemaphores(signalSemaphores);
 
-    m_graphicsQueue.submit({submitInfo}, *m_inFlightFence);
+    m_graphicsQueue.submit({submitInfo}, *m_inFlightFences[m_currentFrame]);
+
+    m_inFlightCommandLists.emplace(m_currentFrame, std::move(commandList));
 }
 
 CommandList VulkanRHI::createCommandList() {
@@ -902,14 +911,16 @@ vk::Extent2D VulkanRHI::getExtent() {
 }
 
 RenderTarget VulkanRHI::beginFrame() {
-    m_device.resetFences({*m_inFlightFence});
-    m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphore, nullptr).second;
+    m_device.waitForFences({*m_inFlightFences[m_currentFrame]}, true, UINT64_MAX);
+    m_inFlightCommandLists.erase(m_currentFrame);
+    m_device.resetFences({*m_inFlightFences[m_currentFrame]});
+    m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame], nullptr).second;
 
     return RenderTarget{*m_swapchainImageViews[m_currentSwapchainImgIdx], m_currentSwapchainImgIdx};
 }
 
 void VulkanRHI::endFrame() {
-    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphore};
+    vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphores[m_currentFrame]};
     vk::SwapchainKHR swapChains[] = {*m_swapchain};
     vk::PresentInfoKHR presentInfo;
     presentInfo.pSwapchains = swapChains;
@@ -921,75 +932,28 @@ void VulkanRHI::endFrame() {
     presentInfo.pImageIndices = &m_currentSwapchainImgIdx;
 
     m_graphicsQueue.presentKHR(presentInfo);
-    m_device.waitForFences({*m_inFlightFence}, true, UINT64_MAX);
+
+    m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-Buffer VulkanRHI::createBuffer(size_t size, const BufferInfo &info) {
-    vk::BufferCreateInfo bufferInfo;
-    bufferInfo.size = size;
-
-    switch (info.usage) {
-        case BufferUsage::Index:
-            bufferInfo.usage = vk::BufferUsageFlagBits::eIndexBuffer;
-            break;
-        case BufferUsage::Vertex:
-            bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
-            break;
-        case BufferUsage::Uniform:
-            bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
-            break;
-        case BufferUsage::Staging:
-            bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-            break;
-    }
-
-    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-    vkr::Buffer buffer(m_device, bufferInfo);
-
-    auto memReq = buffer.getMemoryRequirements();
-
-    vk::MemoryAllocateInfo allocInfo;
-    allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReq.memoryTypeBits,
-                                               vk::MemoryPropertyFlagBits::eHostVisible |
-                                               vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    auto memory = m_device.allocateMemory(allocInfo);
-    buffer.bindMemory(*memory, 0);
-    return Buffer{std::move(buffer), std::move(memory)};
+RHIBufferRef VulkanRHI::CreateBuffer(size_t size, const BufferInfo &info) {
+    return RHIBufferRef(new VulkanBuffer(*m_device, *m_physicalDevice, size, info));
 }
 
-DescriptorSet VulkanRHI::createDescriptorSet(const GraphicsPipeline &pipeline, int num) {
-    vk::DescriptorSetAllocateInfo allocInfo;
-    allocInfo.descriptorPool = *m_descriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &*pipeline.descriptorSetLayouts[num];
-    std::vector<vkr::DescriptorSet> descriptorSets = m_device.allocateDescriptorSets(allocInfo);
-
-    return DescriptorSet{std::move(descriptorSets[0]), &m_device};
+RHIDescriptorSetRef VulkanRHI::CreateDescriptorSet(const GraphicsPipeline &pipeline, int num) {
+    VkDescriptorSetLayout layout = *pipeline.descriptorSetLayouts[num];
+    return RHIDescriptorSetRef(new VulkanDescriptorSet(*m_device, *m_descriptorPool, &layout));
 }
 
 Image VulkanRHI::createImage(uint32_t width, uint32_t height) {
-    return createImageImpl(m_device, m_physicalDevice, width, height, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
-                       vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                       vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
+    return createImageImpl(m_device, m_physicalDevice, width, height, vk::Format::eR8G8B8A8Srgb,
+                           vk::ImageTiling::eOptimal,
+                           vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
 }
 
-void VulkanRHI::copyBuffer(const Buffer &srcBuffer, Buffer &dstBuffer, int size) {
-    auto cmdList = createCommandList();
-    cmdList.begin();
-
-    vk::BufferCopy copyRegion;
-    copyRegion.size = size;
-
-    cmdList.commandBuffer.copyBuffer(*srcBuffer.buffer, *dstBuffer.buffer, copyRegion);
-
-    cmdList.end();
-    submitAndWaitIdle(cmdList);
-}
-
-void VulkanRHI::copyBufferToImage(const Buffer &buf, Image &image, uint32_t width, uint32_t height) {
+void VulkanRHI::CopyBufferToImage(const RHIBufferRef &buf, Image &image, uint32_t width, uint32_t height) {
+    VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
     transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eTransferDstOptimal);
 
@@ -1008,14 +972,13 @@ void VulkanRHI::copyBufferToImage(const Buffer &buf, Image &image, uint32_t widt
     region.imageOffset = vk::Offset3D{0, 0, 0};
     region.imageExtent = vk::Extent3D{width, height, 1};
 
-    cmdList.commandBuffer.copyBufferToImage(*buf.buffer, *image.image, vk::ImageLayout::eTransferDstOptimal, region);
+    cmdList.commandBuffer.copyBufferToImage(buffer->BufferHandle(), *image.image, vk::ImageLayout::eTransferDstOptimal, region);
 
     cmdList.end();
     submitAndWaitIdle(cmdList);
 
     transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
                           vk::ImageLayout::eShaderReadOnlyOptimal);
-
 }
 
 void VulkanRHI::submitAndWaitIdle(CommandList &commandList) {
@@ -1143,17 +1106,23 @@ void CommandList::endRenderPass() {
     commandBuffer.endRenderPass();
 }
 
-void CommandList::bindVertexBuffer(const Buffer &buf, int binding) {
-    commandBuffer.bindVertexBuffers(binding, {*buf.buffer}, {0});
+void CommandList::BindVertexBuffer(const RHIBufferRef &buf, int binding) {
+    VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
+    commandBuffer.bindVertexBuffers(binding, {buffer->BufferHandle()}, {0});
+    ownedResources.emplace_back(buf);
 }
 
-void CommandList::bindIndexBuffer(const Buffer &buf) {
-    commandBuffer.bindIndexBuffer(*buf.buffer, 0, vk::IndexType::eUint16);
+void CommandList::BindIndexBuffer(const RHIBufferRef &buf) {
+    VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
+    commandBuffer.bindIndexBuffer(buffer->BufferHandle(), 0, vk::IndexType::eUint16);
+    ownedResources.emplace_back(buf);
 }
 
-void CommandList::bindDescriptorSet(const GraphicsPipeline &pipeline, const DescriptorSet &set, int binding) {
-    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline.layout, binding, *set.descriptorSet,
+void CommandList::BindDescriptorSet(const GraphicsPipeline &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding) {
+    VulkanDescriptorSet *set = static_cast<VulkanDescriptorSet *>(descriptorSet.get());
+commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipeline.layout, binding, vk::DescriptorSet(set->DescriptorSetHandle()),
                                      {});
+ownedResources.emplace_back(descriptorSet);
 }
 
 GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
@@ -1161,46 +1130,4 @@ GraphicsPipeline::GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout
         : pipeline(
         std::move(pipeline)), layout(std::move(layout)), descriptorSetLayouts(std::move(descriptorSetLayouts)) {
 
-}
-
-void Buffer::fill(void *data, size_t size) {
-    void *devicePtr = memory.mapMemory(0, size);
-    memcpy(devicePtr, data, size);
-    memory.unmapMemory();
-}
-
-void DescriptorSet::update(int binding, Buffer &buffer, int size) {
-    vk::DescriptorBufferInfo bufferInfo;
-    bufferInfo.buffer = *buffer.buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = size;
-
-    vk::WriteDescriptorSet write;
-    write.dstSet = *descriptorSet;
-    write.dstBinding = binding;
-    write.dstArrayElement = 0;
-    write.descriptorType = vk::DescriptorType::eUniformBuffer;
-    write.descriptorCount = 1;
-    write.pBufferInfo = &bufferInfo;
-    write.pImageInfo = nullptr;
-    write.pTexelBufferView = nullptr;
-
-    device->updateDescriptorSets(write, {});
-}
-
-void DescriptorSet::update(int binding, Image &image, Sampler &sampler) {
-    vk::DescriptorImageInfo imageInfo;
-    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    imageInfo.imageView = *image.view;
-    imageInfo.sampler = *sampler.sampler;
-
-    vk::WriteDescriptorSet write;
-    write.dstSet = *descriptorSet;
-    write.dstBinding = binding;
-    write.dstArrayElement = 0;
-    write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    write.descriptorCount = 1;
-    write.pImageInfo = &imageInfo;
-
-    device->updateDescriptorSets(write, {});
 }
