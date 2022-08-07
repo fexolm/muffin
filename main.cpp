@@ -69,7 +69,7 @@ int main() {
     GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
     pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
-    GraphicsPipeline pipeline = rhi.createGraphicsPipeline(pipelineInfo);
+    RHIGraphicsPipelineRef pipeline = rhi.CreateGraphicsPipeline(pipelineInfo);
 
     auto posBuf = rhi.CreateBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
     posBuf->Write((void *) positions.data(), positions.size() * sizeof(glm::vec3));
@@ -121,7 +121,7 @@ int main() {
         auto renderTarget = rhi.beginFrame();
         commandList.begin();
         commandList.beginRenderPass(renderTarget);
-        commandList.bindPipeline(pipeline);
+        commandList.BindPipeline(pipeline);
 
         commandList.BindVertexBuffer(posBuf, 0);
         commandList.BindVertexBuffer(colorsBuf, 1);

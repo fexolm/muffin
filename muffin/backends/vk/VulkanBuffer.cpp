@@ -1,7 +1,6 @@
 #include <stdexcept>
 #include "VulkanBuffer.h"
 
-#define VULKAN_RHI_SAFE_CALL(Result) do {if((Result) != VK_SUCCESS) {}} while(0)
 
 uint32_t
 findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {

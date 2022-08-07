@@ -23,27 +23,6 @@ struct Window {
     ~Window();
 };
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-    glm::vec2 texCoord;
-};
-
-enum class ShaderType {
-    Vertex,
-    Fragment
-};
-
-struct Shader {
-    explicit Shader(vkr::ShaderModule &&module);
-
-    vkr::ShaderModule module;
-
-    std::map<int, std::vector<vk::DescriptorSetLayoutBinding>> bindings;
-    std::vector<vk::VertexInputAttributeDescription> vertexAttributes;
-    std::vector<vk::VertexInputBindingDescription> vertexBindings;
-};
-
 enum VertexElementType {
     None,
     Float1,
@@ -71,23 +50,10 @@ enum VertexElementType {
     NumBits = 5,
 };
 
-struct GraphicsPipelineCreateInfo {
-    std::shared_ptr<Shader> vertexShader;
-    std::shared_ptr<Shader> fragmentShader;
-};
 
 struct RenderTarget {
     vk::ImageView swapchainImg;
     uint32_t imageIdx;
-};
-
-struct GraphicsPipeline {
-    GraphicsPipeline(vkr::Pipeline &&pipeline, vkr::PipelineLayout &&layout,
-                     std::vector<vkr::DescriptorSetLayout> &&descriptorSetLayouts);
-
-    vkr::PipelineLayout layout;
-    vkr::Pipeline pipeline;
-    std::vector<vkr::DescriptorSetLayout> descriptorSetLayouts;
 };
 
 struct CommandList {
@@ -97,7 +63,7 @@ struct CommandList {
 
     void end();
 
-    void bindPipeline(const GraphicsPipeline &pipeline);
+    void BindPipeline(const RHIGraphicsPipelineRef &pipeline);
 
     void beginRenderPass(const RenderTarget &renderTarget);
 
@@ -116,7 +82,7 @@ struct CommandList {
 
     void BindIndexBuffer(const RHIBufferRef &buf);
 
-    void BindDescriptorSet(const GraphicsPipeline &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding);
+    void BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding);
 
     class VulkanRHI *rhi;
 
@@ -136,7 +102,7 @@ public:
 
     RHIBufferRef CreateBuffer(size_t size, const BufferInfo &info);
 
-    GraphicsPipeline createGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
+    RHIGraphicsPipelineRef CreateGraphicsPipeline(const GraphicsPipelineCreateInfo &info);
 
     CommandList createCommandList();
 
@@ -152,7 +118,7 @@ public:
 
     RenderTarget beginFrame();
 
-    RHIDescriptorSetRef CreateDescriptorSet(const GraphicsPipeline &pipeline, int num);
+    RHIDescriptorSetRef CreateDescriptorSet(const RHIGraphicsPipelineRef &pipeline, int num);
 
     Image createImage(uint32_t width, uint32_t height);
 

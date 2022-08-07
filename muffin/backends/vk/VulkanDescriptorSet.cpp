@@ -11,7 +11,7 @@ VulkanDescriptorSet::VulkanDescriptorSet(VkDevice device, VkDescriptorPool descr
     allocInfo.pSetLayouts = layout;
     allocInfo.pNext = nullptr;
 
-    vkAllocateDescriptorSets(deviceHandle, &allocInfo, &descriptorSetHandle);
+    VULKAN_RHI_SAFE_CALL(vkAllocateDescriptorSets(deviceHandle, &allocInfo, &descriptorSetHandle));
 }
 
 VulkanDescriptorSet::~VulkanDescriptorSet() {

@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <vulkan/vulkan_raii.hpp>
+#include <map>
 
 enum class BufferUsage {
     Vertex,
@@ -25,6 +26,13 @@ public:
     virtual void Write(void *data, uint32_t size) = 0;
 };
 
+class RHIGraphicsPipeline {
+public:
+    virtual ~RHIGraphicsPipeline() = default;
+};
+
+using RHIGraphicsPipelineRef = std::shared_ptr<RHIGraphicsPipeline>;
+
 struct Image {
     vk::raii::Image image;
     vk::raii::DeviceMemory memory;
@@ -33,6 +41,26 @@ struct Image {
 
 struct Sampler {
     vk::raii::Sampler sampler;
+};
+
+enum class ShaderType {
+    Vertex,
+    Fragment
+};
+
+struct Shader {
+    explicit Shader(vk::raii::ShaderModule &&module);
+
+    vk::raii::ShaderModule module;
+
+    std::map<int, std::vector<VkDescriptorSetLayoutBinding>> bindings;
+    std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+    std::vector<VkVertexInputBindingDescription> vertexBindings;
+};
+
+struct GraphicsPipelineCreateInfo {
+    std::shared_ptr<Shader> vertexShader;
+    std::shared_ptr<Shader> fragmentShader;
 };
 
 using RHIBufferRef = std::shared_ptr<RHIBuffer>;
@@ -49,4 +77,7 @@ public:
 };
 
 using RHIDescriptorSetRef = std::shared_ptr<RHIDescriptorSet>;
+
+#define VULKAN_RHI_SAFE_CALL(Result) do {if((Result) != VK_SUCCESS) {}} while(0)
+
 
