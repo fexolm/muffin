@@ -3,6 +3,10 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "RHI.h"
+#include <unordered_map>
+#include <string>
+
+const int FRAMES_IN_FLIGHT = 3;
 
 class VulkanGraphicsPipeline : public RHIGraphicsPipeline {
 public:
@@ -16,6 +20,8 @@ public:
     VkPipeline PipelineHandle() const;
 
     VkPipelineLayout LayoutHandle() const;
+
+    std::unordered_map<std::string, DescriptorSetBindingPoint> params;
 
 private:
     VkPipelineLayout layoutHandle;

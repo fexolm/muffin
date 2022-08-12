@@ -253,6 +253,9 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VkDevice device, VkExtent2D exten
         bindings[set].insert(bindings[set].end(), b.begin(), b.end());
     }
 
+    params.merge(info.vertexShader->params);
+    params.merge(info.fragmentShader->params);
+
     for (auto &[set, b]: bindings) {
         descriptorSetLayouts.push_back(CreateDescriptorSetLayout(deviceHandle, b));
     }

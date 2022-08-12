@@ -23,33 +23,6 @@ struct Window {
     ~Window();
 };
 
-enum VertexElementType {
-    None,
-    Float1,
-    Float2,
-    Float3,
-    Float4,
-    PackedNormal,    // FPackedNormal
-    UByte4,
-    UByte4N,
-    Color,
-    Short2,
-    Short4,
-    Short2N,        // 16 bit word normalized to (value/32767.0,value/32767.0,0,0,1)
-    Half2,            // 16 bit float using 1 bit sign, 5 bit exponent, 10 bit mantissa
-    Half4,
-    Short4N,        // 4 X 16 bit word, normalized
-    UShort2,
-    UShort4,
-    UShort2N,        // 16 bit word normalized to (value/65535.0,value/65535.0,0,0,1)
-    UShort4N,        // 4 X 16 bit word unsigned, normalized
-    URGB10A2N,        // 10 bit r, g, b and 2 bit a normalized to (value/1023.0f, value/1023.0f, value/1023.0f, value/3.0f)
-    UInt,
-    MAX,
-
-    NumBits = 5,
-};
-
 
 struct RenderTarget {
     vk::ImageView swapchainImg;
@@ -82,6 +55,10 @@ struct CommandList {
 
     void BindIndexBuffer(const RHIBufferRef &buf);
 
+    void BindUniformBuffer(const std::string &name, const RHIBufferRef &buffer, int size);
+
+    void BindTexture(const std::string &name, Image &texture, Sampler &sampler);
+
     void BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding);
 
     class VulkanRHI *rhi;
@@ -89,6 +66,10 @@ struct CommandList {
     vkr::CommandBuffer commandBuffer;
 
     std::vector<RHIResourceRef> ownedResources;
+
+    std::vector<RHIDescriptorSetRef> currentDescriptorSets;
+
+    RHIGraphicsPipelineRef currentPipeline;
 };
 
 const int MAX_FRAMES_IN_FLIGHT = 2;

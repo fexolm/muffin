@@ -700,8 +700,10 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
     }
 
     for (auto &ub: resources.uniform_buffers) {
-        auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
-        auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+        int binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        int set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+
+        res.params[ub.name] = {set, binding};
 
         VkDescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
@@ -721,8 +723,10 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
     }
 
     for (auto &ub: resources.sampled_images) {
-        auto binding = comp.get_decoration(ub.id, spv::DecorationBinding);
-        auto set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+        int binding = comp.get_decoration(ub.id, spv::DecorationBinding);
+        int set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
+
+        res.params[ub.name] = {set, binding};
 
         VkDescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
@@ -933,13 +937,29 @@ void CommandList::draw(int vertexCount, int instanceCount, int firstVertex, int 
 
 void CommandList::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
                               uint32_t firstInstance) {
+    for(int i=0; i<currentDescriptorSets.size(); i++) {
+        BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
+    }
     commandBuffer.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
-
 
 void CommandList::BindPipeline(const RHIGraphicsPipelineRef &pipeline) {
     VulkanGraphicsPipeline *vkPipeline = static_cast<VulkanGraphicsPipeline *>(pipeline.get());
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, vkPipeline->PipelineHandle());
+
+    for(int i=0; i<currentDescriptorSets.size(); i++) {
+        BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
+    }
+
+    currentPipeline = pipeline;
+    currentDescriptorSets.clear();
+
+
+    for(int i=0; i<vkPipeline->DescriptorLayouts().size(); i++) {
+        RHIDescriptorSetRef descriptorSet = rhi->CreateDescriptorSet(pipeline, i);
+        currentDescriptorSets.push_back(descriptorSet);
+        ownedResources.push_back(descriptorSet);
+    }
 }
 
 void CommandList::setViewport() {
@@ -979,6 +999,20 @@ void CommandList::BindIndexBuffer(const RHIBufferRef &buf) {
     VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
     commandBuffer.bindIndexBuffer(buffer->BufferHandle(), 0, vk::IndexType::eUint16);
     ownedResources.emplace_back(buf);
+}
+
+void CommandList::BindUniformBuffer(const std::string &name, const RHIBufferRef &buffer, int size) {
+    VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(currentPipeline.get());
+    DescriptorSetBindingPoint bindingPoint = vulkanPipeline->params[name];
+    RHIDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
+    descriptorSet->Update(bindingPoint.binding, buffer, size);
+}
+
+void CommandList::BindTexture(const std::string &name, Image &texture, Sampler &sampler) {
+    VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(currentPipeline.get());
+    DescriptorSetBindingPoint bindingPoint = vulkanPipeline->params[name];
+    RHIDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
+    descriptorSet->Update(bindingPoint.binding, texture, sampler);
 }
 
 void CommandList::BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding) {

@@ -10,6 +10,33 @@ enum class BufferUsage {
     Staging,
 };
 
+enum VertexElementType {
+    None,
+    Float1,
+    Float2,
+    Float3,
+    Float4,
+    PackedNormal,    // FPackedNormal
+    UByte4,
+    UByte4N,
+    Color,
+    Short2,
+    Short4,
+    Short2N,        // 16 bit word normalized to (value/32767.0,value/32767.0,0,0,1)
+    Half2,            // 16 bit float using 1 bit sign, 5 bit exponent, 10 bit mantissa
+    Half4,
+    Short4N,        // 4 X 16 bit word, normalized
+    UShort2,
+    UShort4,
+    UShort2N,        // 16 bit word normalized to (value/65535.0,value/65535.0,0,0,1)
+    UShort4N,        // 4 X 16 bit word unsigned, normalized
+    URGB10A2N,        // 10 bit r, g, b and 2 bit a normalized to (value/1023.0f, value/1023.0f, value/1023.0f, value/3.0f)
+    UInt,
+    MAX,
+
+    NumBits = 5,
+};
+
 struct BufferInfo {
     BufferUsage usage;
 };
@@ -48,6 +75,12 @@ enum class ShaderType {
     Fragment
 };
 
+struct DescriptorSetBindingPoint {
+    int set;
+    int binding;
+};
+
+
 struct Shader {
     explicit Shader(vk::raii::ShaderModule &&module);
 
@@ -56,6 +89,8 @@ struct Shader {
     std::map<int, std::vector<VkDescriptorSetLayoutBinding>> bindings;
     std::vector<VkVertexInputAttributeDescription> vertexAttributes;
     std::vector<VkVertexInputBindingDescription> vertexBindings;
+
+    std::unordered_map<std::string, DescriptorSetBindingPoint> params;
 };
 
 struct GraphicsPipelineCreateInfo {

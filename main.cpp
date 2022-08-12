@@ -96,9 +96,6 @@ int main() {
 
     Sampler sampler = rhi.createSampler();
 
-    auto textureDescriptorSet = rhi.CreateDescriptorSet(pipeline, 1);
-    textureDescriptorSet->Update(0, texture, sampler);
-
     while (true) {
 
         SDL_Event e;
@@ -112,10 +109,8 @@ int main() {
         ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        auto uboDescriptorSet = rhi.CreateDescriptorSet(pipeline, 0);
         auto uniformBuffer = rhi.CreateBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
         uniformBuffer->Write((void *) &ubo, sizeof(UniformBufferObject));
-        uboDescriptorSet->Update(0, uniformBuffer, sizeof(UniformBufferObject));
 
         auto commandList = rhi.createCommandList();
         auto renderTarget = rhi.beginFrame();
@@ -128,8 +123,10 @@ int main() {
         commandList.BindVertexBuffer(texCoordsBuf, 2);
 
         commandList.BindIndexBuffer(indexBuf);
-        commandList.BindDescriptorSet(pipeline, uboDescriptorSet, 0);
-        commandList.BindDescriptorSet(pipeline, textureDescriptorSet, 1);
+
+        commandList.BindUniformBuffer("ubo", uniformBuffer, sizeof(UniformBufferObject));
+        commandList.BindTexture("texSampler", texture, sampler);
+
         commandList.setViewport();
         commandList.setScissors();
         commandList.drawIndexed(indices.size(), 1, 0, 0, 0);
