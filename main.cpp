@@ -1,4 +1,6 @@
-#include "muffin/backends/vk/VulkanRHI.h"
+#include "muffin/rhi/RHI.h"
+#include "muffin/rhi/vulkan/RHI.h"
+
 #include <fstream>
 #include <chrono>
 
@@ -7,11 +9,15 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/ext.hpp>
 #include "stb_image.h"
+
+#define SDL_MAIN_HANDLED
+#include <SDL.h>
 
 static std::vector<uint32_t> readFile(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -53,48 +59,52 @@ int main() {
     std::vector<glm::vec2> texCoords;
     std::vector<uint16_t> indices;
 
-    for (const auto& shape : shapes) {
-        for (const auto& index : shape.mesh.indices) {
-            positions.emplace_back(attrib.vertices[3 * index.vertex_index + 0], attrib.vertices[3 * index.vertex_index + 1], attrib.vertices[3 * index.vertex_index + 2]);
+    for (const auto &shape: shapes) {
+        for (const auto &index: shape.mesh.indices) {
+            positions.emplace_back(attrib.vertices[3 * index.vertex_index + 0],
+                                   attrib.vertices[3 * index.vertex_index + 1],
+                                   attrib.vertices[3 * index.vertex_index + 2]);
             colors.emplace_back(1.0f, 1.0f, 1.0f);
-            texCoords.emplace_back(attrib.texcoords[2 * index.texcoord_index + 0], 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]);
+            texCoords.emplace_back(attrib.texcoords[2 * index.texcoord_index + 0],
+                                   1.0f - attrib.texcoords[2 * index.texcoord_index + 1]);
             indices.push_back(indices.size());
         }
     }
 
-    VulkanRHI rhi;
-    auto vert = rhi.createShader(readFile("vert.spv"), ShaderType::Vertex);
-    auto frag = rhi.createShader(readFile("frag.spv"), ShaderType::Fragment);
+    RHIDriverRef rhi = CreateVulkanRhi();
+    auto vert = rhi->CreateShader(readFile("vert.spv"), ShaderType::Vertex);
+    auto frag = rhi->CreateShader(readFile("frag.spv"), ShaderType::Fragment);
 
     GraphicsPipelineCreateInfo pipelineInfo;
-    pipelineInfo.fragmentShader = std::make_shared<Shader>(std::move(frag));
-    pipelineInfo.vertexShader = std::make_shared<Shader>(std::move(vert));
-    RHIGraphicsPipelineRef pipeline = rhi.CreateGraphicsPipeline(pipelineInfo);
+    pipelineInfo.fragmentShader = frag;
+    pipelineInfo.vertexShader = vert;
 
-    auto posBuf = rhi.CreateBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    RHIGraphicsPipelineRef pipeline = rhi->CreateGraphicsPipeline(pipelineInfo);
+
+    auto posBuf = rhi->CreateBuffer(positions.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
     posBuf->Write((void *) positions.data(), positions.size() * sizeof(glm::vec3));
 
-    auto colorsBuf = rhi.CreateBuffer(colors.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
+    auto colorsBuf = rhi->CreateBuffer(colors.size() * sizeof(glm::vec3), BufferInfo{BufferUsage::Vertex});
     colorsBuf->Write((void *) colors.data(), colors.size() * sizeof(glm::vec3));
 
-    auto texCoordsBuf = rhi.CreateBuffer(texCoords.size() * sizeof(glm::vec2), BufferInfo{BufferUsage::Vertex});
+    auto texCoordsBuf = rhi->CreateBuffer(texCoords.size() * sizeof(glm::vec2), BufferInfo{BufferUsage::Vertex});
     texCoordsBuf->Write((void *) texCoords.data(), texCoords.size() * sizeof(glm::vec2));
 
-    auto indexBuf = rhi.CreateBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
+    auto indexBuf = rhi->CreateBuffer(indices.size() * sizeof(uint16_t), BufferInfo{BufferUsage::Index});
     indexBuf->Write((void *) indices.data(), indices.size() * sizeof(uint16_t));
 
     int texWidth, texHeight, texChannels;
     stbi_uc *pixels = stbi_load("viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
-    auto imgBuffer = rhi.CreateBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
+    auto imgBuffer = rhi->CreateBuffer(texWidth * texHeight * 4, BufferInfo{BufferUsage::Staging});
     imgBuffer->Write(pixels, texWidth * texHeight * 4);
     stbi_image_free(pixels);
 
-    auto texture = rhi.createImage(texWidth, texHeight);
+    auto texture = rhi->CreateTexture(texWidth, texHeight);
 
-    rhi.CopyBufferToImage(imgBuffer, texture, texWidth, texHeight);
+    rhi->CopyBufferToTexture(imgBuffer, texture, texWidth, texHeight);
 
-    Sampler sampler = rhi.createSampler();
+    auto sampler = rhi->CreateSampler();
 
     while (true) {
 
@@ -109,31 +119,31 @@ int main() {
         ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        auto uniformBuffer = rhi.CreateBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
+        auto uniformBuffer = rhi->CreateBuffer(sizeof(UniformBufferObject), BufferInfo{BufferUsage::Uniform});
         uniformBuffer->Write((void *) &ubo, sizeof(UniformBufferObject));
 
-        auto commandList = rhi.createCommandList();
-        auto renderTarget = rhi.beginFrame();
-        commandList.begin();
-        commandList.beginRenderPass(renderTarget);
-        commandList.BindPipeline(pipeline);
+        auto commandList = rhi->CreateCommandList();
+        auto renderTarget = rhi->BeginFrame();
+        commandList->Begin();
+        commandList->BeginRenderPass(renderTarget);
+        commandList->BindPipeline(pipeline);
 
-        commandList.BindVertexBuffer(posBuf, 0);
-        commandList.BindVertexBuffer(colorsBuf, 1);
-        commandList.BindVertexBuffer(texCoordsBuf, 2);
+        commandList->BindVertexBuffer(posBuf, 0);
+        commandList->BindVertexBuffer(colorsBuf, 1);
+        commandList->BindVertexBuffer(texCoordsBuf, 2);
 
-        commandList.BindIndexBuffer(indexBuf);
+        commandList->BindIndexBuffer(indexBuf);
 
-        commandList.BindUniformBuffer("ubo", uniformBuffer, sizeof(UniformBufferObject));
-        commandList.BindTexture("texSampler", texture, sampler);
+        commandList->BindUniformBuffer("ubo", uniformBuffer, sizeof(UniformBufferObject));
+        commandList->BindTexture("texSampler", texture, sampler);
 
-        commandList.setViewport();
-        commandList.setScissors();
-        commandList.drawIndexed(indices.size(), 1, 0, 0, 0);
-        commandList.endRenderPass();
-        commandList.end();
-        rhi.submit(commandList);
-        rhi.endFrame();
+        commandList->SetViewport();
+        commandList->SetScissors();
+        commandList->DrawIndexed(indices.size(), 1, 0, 0, 0);
+        commandList->EndRenderPass();
+        commandList->End();
+        rhi->Submit(commandList);
+        rhi->EndFrame();
     }
     return 0;
 }

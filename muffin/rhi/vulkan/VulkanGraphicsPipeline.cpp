@@ -110,11 +110,14 @@ VkRenderPass CreateDummyRenderPass(VkDevice device, VkFormat surfaceFormat, VkFo
 
 VulkanGraphicsPipeline::VulkanGraphicsPipeline(VkDevice device, VkExtent2D extent, VkFormat surfaceFormat, VkFormat depthFormat,
                                                const GraphicsPipelineCreateInfo &info) {
+    VulkanShader *vertexShader = static_cast<VulkanShader *>(info.vertexShader.get());
+    VulkanShader *fragmentShader = static_cast<VulkanShader *>(info.fragmentShader.get());
+
     deviceHandle = device;
     VkPipelineShaderStageCreateInfo vertShaderStageInfo;
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = *info.vertexShader->module;
+    vertShaderStageInfo.module = *vertexShader->module;
     vertShaderStageInfo.pName = "main";
     vertShaderStageInfo.flags = 0;
     vertShaderStageInfo.pSpecializationInfo = nullptr;
@@ -124,7 +127,7 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VkDevice device, VkExtent2D exten
     VkPipelineShaderStageCreateInfo fragShaderStageInfo;
     fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = *info.fragmentShader->module;
+    fragShaderStageInfo.module = *fragmentShader->module;
     fragShaderStageInfo.pName = "main";
     vertShaderStageInfo.flags = 0;
     fragShaderStageInfo.pSpecializationInfo = nullptr;
@@ -134,10 +137,10 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VkDevice device, VkExtent2D exten
 
     VkPipelineVertexInputStateCreateInfo vertexInput;
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInput.vertexBindingDescriptionCount = info.vertexShader->vertexBindings.size();
-    vertexInput.pVertexBindingDescriptions = info.vertexShader->vertexBindings.data();
-    vertexInput.vertexAttributeDescriptionCount = info.vertexShader->vertexAttributes.size();
-    vertexInput.pVertexAttributeDescriptions = info.vertexShader->vertexAttributes.data();
+    vertexInput.vertexBindingDescriptionCount = vertexShader->vertexBindings.size();
+    vertexInput.pVertexBindingDescriptions = vertexShader->vertexBindings.data();
+    vertexInput.vertexAttributeDescriptionCount = vertexShader->vertexAttributes.size();
+    vertexInput.pVertexAttributeDescriptions = vertexShader->vertexAttributes.data();
     vertexInput.flags = 0;
     vertexInput.pNext = nullptr;
 
@@ -246,15 +249,15 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VkDevice device, VkExtent2D exten
 
     std::map<int, std::vector<VkDescriptorSetLayoutBinding>> bindings;
 
-    for (auto &[set, b]: info.vertexShader->bindings) {
+    for (auto &[set, b]: vertexShader->bindings) {
         bindings[set].insert(bindings[set].end(), b.begin(), b.end());
     }
-    for (auto &[set, b]: info.fragmentShader->bindings) {
+    for (auto &[set, b]: fragmentShader->bindings) {
         bindings[set].insert(bindings[set].end(), b.begin(), b.end());
     }
 
-    params.merge(info.vertexShader->params);
-    params.merge(info.fragmentShader->params);
+    params.merge(vertexShader->params);
+    params.merge(fragmentShader->params);
 
     for (auto &[set, b]: bindings) {
         descriptorSetLayouts.push_back(CreateDescriptorSetLayout(deviceHandle, b));

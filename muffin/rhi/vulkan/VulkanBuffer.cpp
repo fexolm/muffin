@@ -1,6 +1,6 @@
 #include <stdexcept>
 #include "VulkanBuffer.h"
-
+#include "VulkanRHI.h"
 
 uint32_t
 FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {

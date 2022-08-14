@@ -1,9 +1,9 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include "RHI.h"
+#include "../RHI.h"
 
-class VulkanDescriptorSet : public RHIDescriptorSet {
+class VulkanDescriptorSet : public RHIResource {
 public:
     VulkanDescriptorSet(VkDevice device, VkDescriptorPool descriptorPool, const VkDescriptorSetLayout *layouts);
 
@@ -11,9 +11,9 @@ public:
 
     virtual ~VulkanDescriptorSet() override;
 
-    virtual void Update(int binding, const RHIBufferRef &buf, int size) override;
+    void Update(int binding, const RHIBufferRef &buf, int size);
 
-    virtual void Update(int binding, Image &image, Sampler &sampler) override;
+    void Update(int binding, class VulkanImage &image, class VulkanSampler &sampler);
 
 private:
     VkDescriptorSet descriptorSetHandle;
@@ -22,3 +22,5 @@ private:
 
     RHIBufferRef bufferRef;
 };
+
+using VulkanDescriptorSetRef = std::shared_ptr<VulkanDescriptorSet>;

@@ -1,5 +1,6 @@
 #include "VulkanDescriptorSet.h"
 #include "VulkanBuffer.h"
+#include "VulkanRHI.h"
 
 VulkanDescriptorSet::VulkanDescriptorSet(VkDevice device, VkDescriptorPool descriptorPool, const VkDescriptorSetLayout *layout) {
     deviceHandle = device;
@@ -46,7 +47,7 @@ void VulkanDescriptorSet::Update(int binding, const RHIBufferRef &buf, int size)
     vkUpdateDescriptorSets(deviceHandle, 1, &write, 0, nullptr);
 }
 
-void VulkanDescriptorSet::Update(int binding, Image &image, Sampler &sampler) {
+void VulkanDescriptorSet::Update(int binding, VulkanImage &image, VulkanSampler &sampler) {
     VkDescriptorImageInfo imageInfo;
     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imageInfo.imageView = *image.view;

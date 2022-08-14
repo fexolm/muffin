@@ -2,9 +2,10 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
-#include "RHI.h"
+#include "../RHI.h"
 #include <unordered_map>
 #include <string>
+#include "VulkanRHI.h"
 
 const int FRAMES_IN_FLIGHT = 3;
 

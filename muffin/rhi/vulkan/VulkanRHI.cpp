@@ -260,7 +260,7 @@ vkr::DescriptorPool createDescriptorPool(const vkr::Device &device) {
     return descriptorPool;
 }
 
-Image
+VulkanImageRef
 createImageImpl(const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice, uint32_t width, uint32_t height,
                 vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
                 vk::MemoryPropertyFlags memoryPorperties, vk::ImageAspectFlagBits aspectMask) {
@@ -302,7 +302,7 @@ createImageImpl(const vkr::Device &device, const vkr::PhysicalDevice &physicalDe
 
     vkr::ImageView view = device.createImageView(viewInfo);
 
-    return Image{std::move(image), std::move(memory), std::move(view)};
+    return std::make_shared<VulkanImage>(std::move(image), std::move(memory), std::move(view));
 }
 
 vkr::DescriptorSetLayout
@@ -333,8 +333,9 @@ bool hasStencilComponent(vk::Format format) {
 
 void transitionImageLayout(VulkanRHI &rhi, const vkr::Image &img, vk::Format format, vk::ImageLayout oldLayout,
                            vk::ImageLayout newLayout) {
-    auto cmdList = rhi.createCommandList();
-    cmdList.begin();
+    auto cmdList = rhi.CreateCommandList();
+    VulkanCommandList &vulkanCommandList = static_cast<VulkanCommandList &>(*cmdList);
+    vulkanCommandList.Begin();
 
     vk::PipelineStageFlags sourceStage;
     vk::PipelineStageFlags destStage;
@@ -383,11 +384,11 @@ void transitionImageLayout(VulkanRHI &rhi, const vkr::Image &img, vk::Format for
         throw std::invalid_argument("unsupported layout transition!");
     }
 
-    cmdList.commandBuffer.pipelineBarrier(sourceStage, destStage,
-                                          (vk::DependencyFlagBits) 0, {}, {}, barrier);
+    vulkanCommandList.commandBuffer.pipelineBarrier(sourceStage, destStage,
+                                                    (vk::DependencyFlagBits) 0, {}, {}, barrier);
 
-    cmdList.end();
-    rhi.submitAndWaitIdle(cmdList);
+    vulkanCommandList.End();
+    rhi.SubmitAndWaitIdle(cmdList);
 }
 
 vk::Format findSupportedFormat(const vkr::PhysicalDevice &physicalDevice, const std::vector<vk::Format> &candidates,
@@ -411,21 +412,21 @@ vk::Format findDepthFormat(const vkr::PhysicalDevice &physicalDevice) {
                                vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 }
 
-Image
+VulkanImageRef
 createDepthImage(VulkanRHI &rhi, const vkr::Device &device, const vkr::PhysicalDevice &physicalDevice, uint32_t width,
                  uint32_t height) {
     vk::Format depthFormat = findDepthFormat(physicalDevice);
-    Image image = createImageImpl(device, physicalDevice, width, height, depthFormat, vk::ImageTiling::eOptimal,
-                                  vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                                  vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eDepth);
+    VulkanImageRef image = createImageImpl(device, physicalDevice, width, height, depthFormat, vk::ImageTiling::eOptimal,
+                                        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                        vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eDepth);
 
-    transitionImageLayout(rhi, image.image, depthFormat, vk::ImageLayout::eUndefined,
+    transitionImageLayout(rhi, image->image, depthFormat, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eDepthStencilAttachmentOptimal);
     return image;
 }
 
 vk::RenderPass VulkanRHI::createRenderPass(int imgIdx) {
-    if(m_renderPassCache.count(imgIdx)) {
+    if (m_renderPassCache.count(imgIdx)) {
         return *m_renderPassCache.at(imgIdx);
     }
 
@@ -490,17 +491,19 @@ vk::RenderPass VulkanRHI::createRenderPass(int imgIdx) {
 }
 
 RHIGraphicsPipelineRef VulkanRHI::CreateGraphicsPipeline(const GraphicsPipelineCreateInfo &info) {
-    return RHIGraphicsPipelineRef(new VulkanGraphicsPipeline(*m_device, (VkExtent2D)m_extent, (VkFormat)m_surfaceFormat.format, (VkFormat)findDepthFormat(m_physicalDevice), info));
+    return RHIGraphicsPipelineRef(
+            new VulkanGraphicsPipeline(*m_device, (VkExtent2D) m_extent, (VkFormat) m_surfaceFormat.format,
+                                       (VkFormat) findDepthFormat(m_physicalDevice), info));
 }
 
 vk::Framebuffer
-VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass, const RenderTarget &renderTarget) {
-    if(m_frameBuffersCache.count(renderTarget.imageIdx)) {
+VulkanRHI::createFramebuffer(const vk::RenderPass &renderPass, const VulkanRenderTarget &renderTarget) {
+    if (m_frameBuffersCache.count(renderTarget.imageIdx)) {
         return *m_frameBuffersCache.at(renderTarget.imageIdx);
     }
 
     vk::ImageView attachments[] = {
-            renderTarget.swapchainImg, *m_depthImage.view
+            renderTarget.swapchainImg, *m_depthImage->view
     };
     vk::FramebufferCreateInfo framebufferInfo;
     framebufferInfo.renderPass = renderPass;
@@ -530,7 +533,7 @@ VulkanRHI::VulkanRHI() :
         m_imageAvailableSemaphores{nullptr, nullptr},
         m_renderFinishedSemaphores{nullptr, nullptr},
         m_inFlightFences{nullptr, nullptr},
-        m_depthImage{nullptr, nullptr, nullptr} {
+        m_depthImage{nullptr} {
 
     uint32_t extensionsCount;
     SDL_Vulkan_GetInstanceExtensions(m_window.window, &extensionsCount, nullptr);
@@ -571,7 +574,7 @@ VulkanRHI::VulkanRHI() :
     vk::FenceCreateInfo fenceInfo;
     fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
 
-    for(int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         m_imageAvailableSemaphores[i] = vkr::Semaphore(m_device, semaphoreInfo);
         m_renderFinishedSemaphores[i] = vkr::Semaphore(m_device, semaphoreInfo);
         m_inFlightFences[i] = vkr::Fence(m_device, fenceInfo);
@@ -665,7 +668,7 @@ VertexElementType spirvToVertexElementType(spirv_cross::SPIRType type) {
     return VertexElementType::None;
 }
 
-Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType type) {
+RHIShaderRef VulkanRHI::CreateShader(const std::vector<uint32_t> &code, ShaderType type) {
     vk::ShaderModuleCreateInfo createInfo;
     createInfo.codeSize = code.size() * sizeof(uint32_t);
     createInfo.pCode = code.data();
@@ -675,7 +678,7 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
 
     auto resources = comp.get_shader_resources();
 
-    auto res = Shader{std::move(shaderMoule)};
+    auto res = std::make_shared<VulkanShader>(std::move(shaderMoule));
 
     if (type == ShaderType::Vertex) {
         int i = 0;
@@ -692,8 +695,8 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
             bindingDescription.stride = getTypeSize(elementType);
             bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-            res.vertexAttributes.push_back(attributeDescription);
-            res.vertexBindings.push_back(bindingDescription);
+            res->vertexAttributes.push_back(attributeDescription);
+            res->vertexBindings.push_back(bindingDescription);
 
             i++;
         }
@@ -703,7 +706,7 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
         int binding = comp.get_decoration(ub.id, spv::DecorationBinding);
         int set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
 
-        res.params[ub.name] = {set, binding};
+        res->params[ub.name] = {set, binding};
 
         VkDescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
@@ -719,14 +722,14 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
         }
         layoutBinding.pImmutableSamplers = nullptr;
 
-        res.bindings[set].push_back(layoutBinding);
+        res->bindings[set].push_back(layoutBinding);
     }
 
     for (auto &ub: resources.sampled_images) {
         int binding = comp.get_decoration(ub.id, spv::DecorationBinding);
         int set = comp.get_decoration(ub.id, spv::DecorationDescriptorSet);
 
-        res.params[ub.name] = {set, binding};
+        res->params[ub.name] = {set, binding};
 
         VkDescriptorSetLayoutBinding layoutBinding;
         layoutBinding.binding = binding;
@@ -742,16 +745,17 @@ Shader VulkanRHI::createShader(const std::vector<uint32_t> &code, ShaderType typ
                 break;
         }
         layoutBinding.pImmutableSamplers = nullptr;
-        res.bindings[set].push_back(layoutBinding);
+        res->bindings[set].push_back(layoutBinding);
     }
 
     return res;
 }
 
-void VulkanRHI::submit(CommandList &commandList) {
+void VulkanRHI::Submit(RHICommandListRef &commandList) {
+    VulkanCommandList &vulkanCommandList = static_cast<VulkanCommandList &>(*commandList);
     vk::SubmitInfo submitInfo;
     vk::Semaphore waitSemaphores[] = {*m_imageAvailableSemaphores[m_currentFrame]};
-    vk::CommandBuffer commandBuffers = {*commandList.commandBuffer};
+    vk::CommandBuffer commandBuffers = {*vulkanCommandList.commandBuffer};
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphores[m_currentFrame]};
     submitInfo.setWaitSemaphores(waitSemaphores)
@@ -761,30 +765,32 @@ void VulkanRHI::submit(CommandList &commandList) {
 
     m_graphicsQueue.submit({submitInfo}, *m_inFlightFences[m_currentFrame]);
 
-    m_inFlightCommandLists.emplace(m_currentFrame, std::move(commandList));
+    m_inFlightResources.emplace(m_currentFrame, commandList);
 }
 
-CommandList VulkanRHI::createCommandList() {
+RHICommandListRef VulkanRHI::CreateCommandList() {
     vkr::CommandBuffers commandBuffers = createCommandBuffers(m_device, m_commandPool);
     commandBuffers[0].reset();
 
-    return CommandList(std::move(commandBuffers[0]), this);
+    return RHICommandListRef(new VulkanCommandList(std::move(commandBuffers[0]), this));
 }
 
 vk::Extent2D VulkanRHI::getExtent() {
     return m_extent;
 }
 
-RenderTarget VulkanRHI::beginFrame() {
+RHIRenderTargetRef VulkanRHI::BeginFrame() {
     m_device.waitForFences({*m_inFlightFences[m_currentFrame]}, true, UINT64_MAX);
-    m_inFlightCommandLists.erase(m_currentFrame);
+    m_inFlightResources.erase(m_currentFrame);
     m_device.resetFences({*m_inFlightFences[m_currentFrame]});
-    m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame], nullptr).second;
+    m_currentSwapchainImgIdx = m_swapchain.acquireNextImage(UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame],
+                                                            nullptr).second;
 
-    return RenderTarget{*m_swapchainImageViews[m_currentSwapchainImgIdx], m_currentSwapchainImgIdx};
+    return RHIRenderTargetRef(
+            new VulkanRenderTarget{.swapchainImg = *m_swapchainImageViews[m_currentSwapchainImgIdx], .imageIdx = m_currentSwapchainImgIdx});
 }
 
-void VulkanRHI::endFrame() {
+void VulkanRHI::EndFrame() {
     vk::Semaphore signalSemaphores[] = {*m_renderFinishedSemaphores[m_currentFrame]};
     vk::SwapchainKHR swapChains[] = {*m_swapchain};
     vk::PresentInfoKHR presentInfo;
@@ -805,26 +811,29 @@ RHIBufferRef VulkanRHI::CreateBuffer(size_t size, const BufferInfo &info) {
     return RHIBufferRef(new VulkanBuffer(*m_device, *m_physicalDevice, size, info));
 }
 
-RHIDescriptorSetRef VulkanRHI::CreateDescriptorSet(const RHIGraphicsPipelineRef &pipeline, int num) {
+VulkanDescriptorSetRef VulkanRHI::CreateDescriptorSet(const RHIGraphicsPipelineRef &pipeline, int num) {
     VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(pipeline.get());
     VkDescriptorSetLayout layout = vulkanPipeline->DescriptorLayouts()[num];
-    return RHIDescriptorSetRef(new VulkanDescriptorSet(*m_device, *m_descriptorPool, &layout));
+    return VulkanDescriptorSetRef(new VulkanDescriptorSet(*m_device, *m_descriptorPool, &layout));
 }
 
-Image VulkanRHI::createImage(uint32_t width, uint32_t height) {
+RHITextureRef VulkanRHI::CreateTexture(uint32_t width, uint32_t height) {
     return createImageImpl(m_device, m_physicalDevice, width, height, vk::Format::eR8G8B8A8Srgb,
                            vk::ImageTiling::eOptimal,
                            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                            vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ImageAspectFlagBits::eColor);
 }
 
-void VulkanRHI::CopyBufferToImage(const RHIBufferRef &buf, Image &image, uint32_t width, uint32_t height) {
+void VulkanRHI::CopyBufferToTexture(const RHIBufferRef &buf, RHITextureRef &texture, uint32_t width, uint32_t height) {
     VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
-    transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
+    VulkanImage *image = static_cast<VulkanImage *>(texture.get());
+    transitionImageLayout(*this, image->image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eTransferDstOptimal);
 
-    auto cmdList = createCommandList();
-    cmdList.begin();
+    auto cmdList = CreateCommandList();
+
+    VulkanCommandList &vulkanCommmandList = static_cast<VulkanCommandList &>(*cmdList);
+    vulkanCommmandList.Begin();
 
     vk::BufferImageCopy region;
     region.bufferOffset = 0;
@@ -838,24 +847,27 @@ void VulkanRHI::CopyBufferToImage(const RHIBufferRef &buf, Image &image, uint32_
     region.imageOffset = vk::Offset3D{0, 0, 0};
     region.imageExtent = vk::Extent3D{width, height, 1};
 
-    cmdList.commandBuffer.copyBufferToImage(buffer->BufferHandle(), *image.image, vk::ImageLayout::eTransferDstOptimal, region);
+    vulkanCommmandList.commandBuffer.copyBufferToImage(buffer->BufferHandle(), *image->image,
+                                                       vk::ImageLayout::eTransferDstOptimal, region);
 
-    cmdList.end();
-    submitAndWaitIdle(cmdList);
+    vulkanCommmandList.End();
+    SubmitAndWaitIdle(cmdList);
 
-    transitionImageLayout(*this, image.image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
+    transitionImageLayout(*this, image->image, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal,
                           vk::ImageLayout::eShaderReadOnlyOptimal);
 }
 
-void VulkanRHI::submitAndWaitIdle(CommandList &commandList) {
+void VulkanRHI::SubmitAndWaitIdle(RHICommandListRef &commandList) {
+    VulkanCommandList &vulkanCommmandList = static_cast<VulkanCommandList &>(*commandList);
+
     vk::SubmitInfo submitInfo;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &*commandList.commandBuffer;
+    submitInfo.pCommandBuffers = &*vulkanCommmandList.commandBuffer;
     m_graphicsQueue.submit({submitInfo}, nullptr);
     m_device.waitIdle();
 }
 
-Sampler VulkanRHI::createSampler() {
+RHISamplerRef VulkanRHI::CreateSampler() {
     vk::SamplerCreateInfo samplerInfo;
     samplerInfo.magFilter = vk::Filter::eLinear;
     samplerInfo.minFilter = vk::Filter::eLinear;
@@ -874,7 +886,7 @@ Sampler VulkanRHI::createSampler() {
     samplerInfo.maxLod = 0.f;
 
     vkr::Sampler sampler = m_device.createSampler(samplerInfo);
-    return Sampler{std::move(sampler)};
+    return RHISamplerRef(new VulkanSampler(std::move(sampler)));
 }
 
 void VulkanRHI::waitIdle() {
@@ -882,39 +894,40 @@ void VulkanRHI::waitIdle() {
 }
 
 
-Window::Window() {
+VulkanWindow::VulkanWindow() {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
     window = SDL_CreateWindow("SDL Vulkan Sample", 0, 0, 800, 600, SDL_WINDOW_VULKAN);
     SDL_GetWindowSize(window, &width, &height);
 }
 
-Window::~Window() {
+VulkanWindow::~VulkanWindow() {
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
 
-Shader::Shader(vkr::ShaderModule &&module) : module(std::move(module)) {
+VulkanShader::VulkanShader(vkr::ShaderModule &&module) : module(std::move(module)) {
 
 }
 
-CommandList::CommandList(vkr::CommandBuffer &&commandBuffer, class VulkanRHI *rhi) : commandBuffer(
+VulkanCommandList::VulkanCommandList(vkr::CommandBuffer &&commandBuffer, class VulkanRHI *rhi) : commandBuffer(
         std::move(commandBuffer)), rhi(rhi) {
 }
 
-void CommandList::begin() {
+void VulkanCommandList::Begin() {
     vk::CommandBufferBeginInfo beginInfo;
     beginInfo.pInheritanceInfo = nullptr;
     commandBuffer.begin(beginInfo);
 }
 
-void CommandList::end() {
+void VulkanCommandList::End() {
     commandBuffer.end();
 }
 
-void CommandList::beginRenderPass(const RenderTarget &renderTarget) {
+void VulkanCommandList::BeginRenderPass(const RHIRenderTargetRef &renderTarget) {
+    VulkanRenderTarget *vulkanRenderTarget = static_cast<VulkanRenderTarget *>(renderTarget.get());
 
-    vk::RenderPass renderPass = rhi->createRenderPass(renderTarget.imageIdx);
-    vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass, renderTarget);
+    vk::RenderPass renderPass = rhi->createRenderPass(vulkanRenderTarget->imageIdx);
+    vk::Framebuffer framebuffer = rhi->createFramebuffer(renderPass, *vulkanRenderTarget);
 
     vk::RenderPassBeginInfo renderPassBeginInfo;
     renderPassBeginInfo.renderPass = renderPass;
@@ -931,23 +944,20 @@ void CommandList::beginRenderPass(const RenderTarget &renderTarget) {
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
 }
 
-void CommandList::draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
-    commandBuffer.draw(vertexCount, instanceCount, firstVertex, firstInstance);
-}
-
-void CommandList::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
-                              uint32_t firstInstance) {
-    for(int i=0; i<currentDescriptorSets.size(); i++) {
+void
+VulkanCommandList::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
+                               uint32_t firstInstance) {
+    for (int i = 0; i < currentDescriptorSets.size(); i++) {
         BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
     }
     commandBuffer.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
-void CommandList::BindPipeline(const RHIGraphicsPipelineRef &pipeline) {
+void VulkanCommandList::BindPipeline(const RHIGraphicsPipelineRef &pipeline) {
     VulkanGraphicsPipeline *vkPipeline = static_cast<VulkanGraphicsPipeline *>(pipeline.get());
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, vkPipeline->PipelineHandle());
 
-    for(int i=0; i<currentDescriptorSets.size(); i++) {
+    for (int i = 0; i < currentDescriptorSets.size(); i++) {
         BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
     }
 
@@ -955,14 +965,14 @@ void CommandList::BindPipeline(const RHIGraphicsPipelineRef &pipeline) {
     currentDescriptorSets.clear();
 
 
-    for(int i=0; i<vkPipeline->DescriptorLayouts().size(); i++) {
-        RHIDescriptorSetRef descriptorSet = rhi->CreateDescriptorSet(pipeline, i);
+    for (int i = 0; i < vkPipeline->DescriptorLayouts().size(); i++) {
+        VulkanDescriptorSetRef descriptorSet = rhi->CreateDescriptorSet(pipeline, i);
         currentDescriptorSets.push_back(descriptorSet);
         ownedResources.push_back(descriptorSet);
     }
 }
 
-void CommandList::setViewport() {
+void VulkanCommandList::SetViewport() {
     vk::Extent2D extent = rhi->getExtent();
     vk::Viewport viewport;
     viewport.x = 0.f;
@@ -975,7 +985,7 @@ void CommandList::setViewport() {
     commandBuffer.setViewport(0, viewport);
 }
 
-void CommandList::setScissors() {
+void VulkanCommandList::SetScissors() {
     vk::Extent2D extent = rhi->getExtent();
 
     vk::Rect2D scissor;
@@ -985,41 +995,54 @@ void CommandList::setScissors() {
     commandBuffer.setScissor(0, scissor);
 }
 
-void CommandList::endRenderPass() {
+void VulkanCommandList::EndRenderPass() {
     commandBuffer.endRenderPass();
 }
 
-void CommandList::BindVertexBuffer(const RHIBufferRef &buf, int binding) {
+void VulkanCommandList::BindVertexBuffer(const RHIBufferRef &buf, int binding) {
     VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
     commandBuffer.bindVertexBuffers(binding, {buffer->BufferHandle()}, {0});
     ownedResources.emplace_back(buf);
 }
 
-void CommandList::BindIndexBuffer(const RHIBufferRef &buf) {
+void VulkanCommandList::BindIndexBuffer(const RHIBufferRef &buf) {
     VulkanBuffer *buffer = static_cast<VulkanBuffer *>(buf.get());
     commandBuffer.bindIndexBuffer(buffer->BufferHandle(), 0, vk::IndexType::eUint16);
     ownedResources.emplace_back(buf);
 }
 
-void CommandList::BindUniformBuffer(const std::string &name, const RHIBufferRef &buffer, int size) {
+void VulkanCommandList::BindUniformBuffer(const std::string &name, const RHIBufferRef &buffer, int size) {
     VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(currentPipeline.get());
     DescriptorSetBindingPoint bindingPoint = vulkanPipeline->params[name];
-    RHIDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
+    VulkanDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
     descriptorSet->Update(bindingPoint.binding, buffer, size);
 }
 
-void CommandList::BindTexture(const std::string &name, Image &texture, Sampler &sampler) {
+void VulkanCommandList::BindTexture(const std::string &name, const RHITextureRef &texture, const RHISamplerRef &sampler) {
     VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(currentPipeline.get());
     DescriptorSetBindingPoint bindingPoint = vulkanPipeline->params[name];
-    RHIDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
-    descriptorSet->Update(bindingPoint.binding, texture, sampler);
+    VulkanDescriptorSetRef descriptorSet = currentDescriptorSets[bindingPoint.set];
+
+    VulkanImage *vulkanImage = static_cast<VulkanImage *>(texture.get());
+    VulkanSampler *vulkanSampler = static_cast<VulkanSampler *>(sampler.get());
+    descriptorSet->Update(bindingPoint.binding, *vulkanImage, *vulkanSampler);
 }
 
-void CommandList::BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline, const RHIDescriptorSetRef &descriptorSet, int binding) {
+void VulkanCommandList::BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline,
+                                          const VulkanDescriptorSetRef &descriptorSet, int binding) {
     VulkanGraphicsPipeline *vulkanPipeline = static_cast<VulkanGraphicsPipeline *>(pipeline.get());
 
     VulkanDescriptorSet *set = static_cast<VulkanDescriptorSet *>(descriptorSet.get());
-commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, vulkanPipeline->LayoutHandle(), binding, vk::DescriptorSet(set->DescriptorSetHandle()),
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, vulkanPipeline->LayoutHandle(), binding,
+                                     vk::DescriptorSet(set->DescriptorSetHandle()),
                                      {});
-ownedResources.emplace_back(descriptorSet);
+    ownedResources.emplace_back(descriptorSet);
+}
+
+VulkanImage::VulkanImage(vk::raii::Image &&img, vk::raii::DeviceMemory &&memory, vk::raii::ImageView &&view) : image(
+        std::move(img)), memory(std::move(memory)), view(std::move(view)) {
+
+}
+
+VulkanSampler::VulkanSampler(vk::raii::Sampler &&sampler) : sampler(std::move(sampler)) {
 }
