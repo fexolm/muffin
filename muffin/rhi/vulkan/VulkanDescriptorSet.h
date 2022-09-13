@@ -1,26 +1,32 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
 #include "../RHI.h"
+#include "VulkanDescriptorPool.h"
 
-class VulkanDescriptorSet : public RHIResource {
+#include <vulkan/vulkan.h>
+
+class VulkanDescriptorSet : public RHIResource
+{
 public:
-    VulkanDescriptorSet(VkDevice device, VkDescriptorPool descriptorPool, const VkDescriptorSetLayout *layouts);
+	VulkanDescriptorSet(VulkanDeviceRef device,
+		VulkanDescriptorPoolRef descriptorPool,
+		const VkDescriptorSetLayout* layouts);
 
-    VkDescriptorSet DescriptorSetHandle() const;
+	VkDescriptorSet DescriptorSetHandle() const;
 
-    virtual ~VulkanDescriptorSet() override;
+	virtual ~VulkanDescriptorSet() override;
 
-    void Update(int binding, const RHIBufferRef &buf, int size);
+	void Update(int binding, const RHIBufferRef& buf, int size);
 
-    void Update(int binding, class VulkanImage &image, class VulkanSampler &sampler);
+	void Update(int binding, class VulkanImage& image,
+		class VulkanSampler& sampler);
 
 private:
-    VkDescriptorSet descriptorSetHandle;
-    VkDescriptorPool descriptorPoolHandle;
-    VkDevice deviceHandle;
+	VulkanDeviceRef device;
+	VkDescriptorSet descriptorSet;
+	VulkanDescriptorPoolRef descriptorPool;
 
-    RHIBufferRef bufferRef;
+	RHIBufferRef bufferRef;
 };
 
 using VulkanDescriptorSetRef = std::shared_ptr<VulkanDescriptorSet>;

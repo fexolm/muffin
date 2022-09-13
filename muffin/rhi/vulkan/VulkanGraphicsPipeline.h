@@ -1,34 +1,37 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-#include <vector>
 #include "../RHI.h"
-#include <unordered_map>
-#include <string>
+#include "VulkanDevice.h"
 #include "VulkanRHI.h"
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <vulkan/vulkan.h>
 
 const int FRAMES_IN_FLIGHT = 3;
 
-class VulkanGraphicsPipeline : public RHIGraphicsPipeline {
+class VulkanGraphicsPipeline : public RHIGraphicsPipeline
+{
 public:
-    VulkanGraphicsPipeline(VkDevice device, VkExtent2D extent, VkFormat surfaceFormat, VkFormat depthFormat,
-                           const GraphicsPipelineCreateInfo &info);
+	VulkanGraphicsPipeline(VulkanDeviceRef device, VkExtent2D extent, VkFormat surfaceFormat, VkFormat depthFormat,
+		const GraphicsPipelineCreateInfo& info);
 
-    virtual ~VulkanGraphicsPipeline();
+	virtual ~VulkanGraphicsPipeline();
 
-    const std::vector<VkDescriptorSetLayout> &DescriptorLayouts() const;
+	const std::vector<VkDescriptorSetLayout>& DescriptorLayouts() const;
 
-    VkPipeline PipelineHandle() const;
+	VkPipeline PipelineHandle() const;
 
-    VkPipelineLayout LayoutHandle() const;
+	VkPipelineLayout LayoutHandle() const;
 
-    std::unordered_map<std::string, DescriptorSetBindingPoint> params;
+	std::unordered_map<std::string, DescriptorSetBindingPoint> params;
 
 private:
-    VkPipelineLayout layoutHandle;
-    VkPipeline pipelineHandle;
-    VkDevice deviceHandle;
+	VulkanDeviceRef device;
 
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+	VkPipelineLayout layoutHandle;
+	VkPipeline pipelineHandle;
+
+	std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
 };
-

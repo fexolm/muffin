@@ -1,23 +1,27 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-#include <memory>
 #include "../RHI.h"
+#include "VulkanDevice.h"
 
-class VulkanBuffer : public RHIBuffer {
+#include <memory>
+#include <vulkan/vulkan.h>
+
+class VulkanBuffer : public RHIBuffer
+{
 public:
-    VulkanBuffer(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t size, const BufferInfo &info);
+	VulkanBuffer(VulkanDeviceRef device, VkPhysicalDevice physicalDevice,
+		uint32_t size, const BufferInfo& info);
 
-    virtual void Write(void *data, uint32_t size) override;
+	virtual void Write(void* data, uint32_t size) override;
 
-    VkBuffer BufferHandle() const;
+	VkBuffer Buffer() const;
 
-    VkDeviceMemory AllocHandle() const;
+	VkDeviceMemory Memory() const;
 
-    virtual ~VulkanBuffer() override;
+	virtual ~VulkanBuffer() override;
 
 private:
-    VkDevice deviceHandle;
-    VkBuffer bufferHandle;
-    VkDeviceMemory allocHandle;
+	VulkanDeviceRef device;
+	VkBuffer buffer;
+	VkDeviceMemory alloc;
 };

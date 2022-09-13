@@ -1,185 +1,226 @@
 #pragma once
 
-#include <vulkan/vulkan_raii.hpp>
+#include "../RHI.h"
+#include "VulkanDescriptorPool.h"
+#include "VulkanDescriptorSet.h"
+#include "VulkanDevice.h"
+#include "VulkanRenderPass.h"
+
 #include <SDL2/SDL.h>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-#include <memory>
 #include <map>
+#include <memory>
+#include <string>
 #include <unordered_map>
-#include "../RHI.h"
-#include "VulkanDescriptorSet.h"
+#include <vulkan/vulkan.h>
 
-namespace vkr = vk::raii;
+struct VulkanWindow
+{
+	SDL_Window* window;
+	int width;
+	int height;
 
-struct VulkanWindow {
-    SDL_Window *window;
-    int width;
-    int height;
+	VulkanWindow();
 
-    VulkanWindow();
-
-    ~VulkanWindow();
+	~VulkanWindow();
 };
 
-struct VulkanImage : RHITexture {
-    vk::raii::Image image;
-    vk::raii::DeviceMemory memory;
-    vk::raii::ImageView view;
+struct VulkanImage : RHITexture
+{
+	VulkanDeviceRef device;
+	VkImage image;
+	VkDeviceMemory memory;
+	VkImageView view;
 
-    VulkanImage(vk::raii::Image &&img, vk::raii::DeviceMemory &&memory, vk::raii::ImageView &&view);
+	VulkanImage(VulkanDeviceRef device, VkImage img, VkDeviceMemory memory, VkImageView view);
+
+	virtual ~VulkanImage() override;
 };
 
 using VulkanImageRef = std::shared_ptr<VulkanImage>;
 
-struct VulkanSampler : RHISampler {
-    vk::raii::Sampler sampler;
+struct VulkanSampler : RHISampler
+{
+	VulkanDeviceRef device;
+	VkSampler sampler;
 
-    VulkanSampler(vk::raii::Sampler &&sampler);
+	VulkanSampler(VulkanDeviceRef device, VkSampler sampler);
+
+	virtual ~VulkanSampler() override;
 };
 
-struct DescriptorSetBindingPoint {
-    int set;
-    int binding;
+struct DescriptorSetBindingPoint
+{
+	int set;
+	int binding;
 };
 
-struct VulkanShader : public RHIShader {
-    explicit VulkanShader(vk::raii::ShaderModule &&module);
+struct VulkanShader : public RHIShader
+{
+	explicit VulkanShader(VulkanDeviceRef device, VkShaderModule module);
 
-    vk::raii::ShaderModule module;
+	virtual ~VulkanShader() override;
 
-    std::map<int, std::vector<VkDescriptorSetLayoutBinding>> bindings;
-    std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-    std::vector<VkVertexInputBindingDescription> vertexBindings;
+	VulkanDeviceRef device;
+	VkShaderModule module;
 
-    std::unordered_map<std::string, DescriptorSetBindingPoint> params;
+	std::map<int, std::vector<VkDescriptorSetLayoutBinding>> bindings;
+	std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+	std::vector<VkVertexInputBindingDescription> vertexBindings;
+
+	std::unordered_map<std::string, DescriptorSetBindingPoint> params;
 };
 
-
-struct VulkanRenderTarget : public RHIRenderTarget {
-    vk::ImageView swapchainImg;
-    uint32_t imageIdx;
+struct VulkanRenderTarget : public RHIRenderTarget
+{
+	VkImageView swapchainImg;
+	uint32_t imageIdx;
 };
 
-struct VulkanCommandList : public RHICommandList {
-    explicit VulkanCommandList(vkr::CommandBuffer &&commandBuffer, class VulkanRHI *rhi);
+class VulkanCommandPool
+{
+public:
+	VulkanCommandPool(VulkanDeviceRef device, VkCommandPool commandPool);
 
-    virtual void Begin() override;
+	const VkCommandPool& CommandPool();
 
-    virtual void End() override;
+	~VulkanCommandPool();
 
-    virtual void BindPipeline(const RHIGraphicsPipelineRef &pipeline) override;
+private:
+	VulkanDeviceRef device;
+	VkCommandPool commandPool;
+};
 
-    virtual void BeginRenderPass(const RHIRenderTargetRef &renderTarget) override;
+using VulkanCommandPoolRef = std::shared_ptr<VulkanCommandPool>;
 
-    virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
-                     uint32_t firstInstance) override;
+struct VulkanCommandList : public RHICommandList
+{
+	explicit VulkanCommandList(VulkanDeviceRef device, VulkanCommandPoolRef commandPool, VkCommandBuffer commandBuffer, class VulkanRHI* rhi);
 
-    virtual void SetViewport() override;
+	virtual ~VulkanCommandList() override;
 
-    virtual void SetScissors() override;
+	virtual void Begin() override;
 
-    virtual void EndRenderPass() override;
+	virtual void End() override;
 
-    virtual void BindVertexBuffer(const RHIBufferRef &buf, int binding) override;
+	virtual void BindPipeline(const RHIGraphicsPipelineRef& pipeline) override;
 
-    virtual void BindIndexBuffer(const RHIBufferRef &buf) override;
+	virtual void BeginRenderPass(const RHIRenderTargetRef& renderTarget) override;
 
-    virtual void BindUniformBuffer(const std::string &name, const RHIBufferRef &buffer, int size) override;
+	virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
+		uint32_t firstInstance) override;
 
-    virtual void BindTexture(const std::string &name, const RHITextureRef &texture, const RHISamplerRef &sampler);
+	virtual void SetViewport() override;
 
-    void BindDescriptorSet(const RHIGraphicsPipelineRef &pipeline,
-                           const VulkanDescriptorSetRef &descriptorSet, int binding);
+	virtual void SetScissors() override;
 
-    class VulkanRHI *rhi;
+	virtual void EndRenderPass() override;
 
-    vkr::CommandBuffer commandBuffer;
+	virtual void BindVertexBuffer(const RHIBufferRef& buf, int binding) override;
 
-    std::vector<RHIResourceRef> ownedResources;
+	virtual void BindIndexBuffer(const RHIBufferRef& buf) override;
 
-    std::vector<VulkanDescriptorSetRef> currentDescriptorSets;
+	virtual void BindUniformBuffer(const std::string& name, const RHIBufferRef& buffer, int size) override;
 
-    RHIGraphicsPipelineRef currentPipeline;
+	virtual void BindTexture(const std::string& name, const RHITextureRef& texture, const RHISamplerRef& sampler);
+
+	void BindDescriptorSet(const RHIGraphicsPipelineRef& pipeline,
+		const VulkanDescriptorSetRef& descriptorSet, int binding);
+
+	class VulkanRHI* rhi;
+
+	VulkanDeviceRef device;
+	VulkanCommandPoolRef commandPool;
+	VkCommandBuffer commandBuffer;
+
+	std::vector<RHIResourceRef> ownedResources;
+
+	std::vector<VulkanDescriptorSetRef> currentDescriptorSets;
+
+	RHIGraphicsPipelineRef currentPipeline;
 };
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-class VulkanRHI : public RHIDriver {
+class VulkanRHI : public RHIDriver
+{
 
 public:
-    VulkanRHI();
+	VulkanRHI();
 
-    virtual RHIShaderRef CreateShader(const std::vector<uint32_t> &code, ShaderType type) override;
+	virtual ~VulkanRHI() override;
 
-    virtual RHIBufferRef CreateBuffer(size_t size, const BufferInfo &info) override;
+	virtual RHIShaderRef CreateShader(const std::vector<uint32_t>& code, ShaderType type) override;
 
-    virtual RHIGraphicsPipelineRef CreateGraphicsPipeline(const GraphicsPipelineCreateInfo &info) override;
+	virtual RHIBufferRef CreateBuffer(size_t size, const BufferInfo& info) override;
 
-    virtual RHICommandListRef CreateCommandList() override;
+	virtual RHIGraphicsPipelineRef CreateGraphicsPipeline(const GraphicsPipelineCreateInfo& info) override;
 
-    virtual void Submit(RHICommandListRef &commandList) override;
+	virtual RHICommandListRef CreateCommandList() override;
 
-    virtual void SubmitAndWaitIdle(RHICommandListRef &commandList) override;
+	virtual void Submit(RHICommandListRef& commandList) override;
 
-    virtual RHIRenderTargetRef BeginFrame() override;
+	virtual void WaitIdle() override;
 
-    virtual RHITextureRef CreateTexture(uint32_t width, uint32_t height) override;
+	virtual void SubmitAndWaitIdle(RHICommandListRef& commandList) override;
 
-    virtual RHISamplerRef CreateSampler() override;
+	virtual RHIRenderTargetRef BeginFrame() override;
 
-    virtual void CopyBufferToTexture(const RHIBufferRef &buf, RHITextureRef &texture, uint32_t width, uint32_t height) override;
+	virtual RHITextureRef CreateTexture(uint32_t width, uint32_t height) override;
 
-    virtual void EndFrame() override;
+	virtual RHISamplerRef CreateSampler() override;
 
-    vk::RenderPass createRenderPass(int imgIdx);
+	virtual void CopyBufferToTexture(const RHIBufferRef& buf, RHITextureRef& texture, uint32_t width, uint32_t height) override;
 
-    vk::Framebuffer createFramebuffer(const vk::RenderPass &renderPass, const VulkanRenderTarget &renderTarget);
+	virtual void EndFrame() override;
 
-    vk::Extent2D getExtent();
+	VulkanRenderPassRef createRenderPass(int imgIdx);
 
-    VulkanDescriptorSetRef CreateDescriptorSet(const RHIGraphicsPipelineRef &pipeline, int num);
+	VkFramebuffer createFramebuffer(VulkanRenderPassRef renderPass, const VulkanRenderTarget& renderTarget);
 
+	VkExtent2D getExtent();
 
-    void waitIdle();
+	VulkanDescriptorSetRef CreateDescriptorSet(const RHIGraphicsPipelineRef& pipeline, int num);
+
+	void waitIdle();
 
 private:
-    VulkanWindow m_window;
-    vkr::Context m_context;
-    vkr::Instance m_instance;
-    vkr::PhysicalDevice m_physicalDevice;
-    vkr::SurfaceKHR m_surface;
-    uint32_t m_graphicsFamilyIdx;
-    uint32_t m_presentFamilyIdx;
-    vkr::Device m_device;
-    vkr::Queue m_graphicsQueue;
-    vkr::Queue m_presentQueue;
-    vk::SurfaceFormatKHR m_surfaceFormat;
-    vk::PresentModeKHR m_presentMode;
-    vk::SurfaceCapabilitiesKHR m_caps;
-    vk::Extent2D m_extent;
-    vkr::SwapchainKHR m_swapchain;
-    std::vector<vk::raii::ImageView> m_swapchainImageViews;
+	VulkanWindow window;
 
-    vkr::CommandPool m_commandPool;
-    vkr::CommandBuffers m_commandBuffers;
+	VulkanInstanceRef instance;
+	VulkanDeviceRef device;
 
-    vkr::DescriptorPool m_descriptorPool;
+	VkSurfaceKHR surface;
 
-    vkr::Semaphore m_imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT];
-    vkr::Semaphore m_renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
-    vkr::Fence m_inFlightFences[MAX_FRAMES_IN_FLIGHT];
+	VkSurfaceFormatKHR surfaceFormat;
+	VkPresentModeKHR presentMode;
+	VkSurfaceCapabilitiesKHR caps;
+	VkExtent2D extent;
+	VkSwapchainKHR swapchain;
+	std::vector<VkImageView> swapchainImageViews;
 
-    std::unordered_map<int, vkr::Framebuffer> m_frameBuffersCache;
-    std::unordered_map<int, vkr::RenderPass> m_renderPassCache;
+	VulkanCommandPoolRef commandPool;
 
-    uint32_t m_currentSwapchainImgIdx;
-    uint32_t m_currentFrame;
+	VulkanDescriptorPoolRef descriptorPool;
 
-    VulkanImageRef m_depthImage;
+	VkSemaphore imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT];
+	VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
+	VkFence inFlightFences[MAX_FRAMES_IN_FLIGHT];
 
-    std::unordered_multimap<int, RHIResourceRef> m_inFlightResources;
+	std::unordered_map<int, VkFramebuffer> frameBuffersCache;
+	std::unordered_map<int, VulkanRenderPassRef> renderPassCache;
+
+	uint32_t currentSwapchainImgIdx;
+	uint32_t currentFrame;
+
+	VulkanImageRef depthImage;
+
+	std::unordered_multimap<int, RHIResourceRef> inFlightResources;
 };
 
-#define VULKAN_RHI_SAFE_CALL(Result) do {if((Result) != VK_SUCCESS) {}} while(0)
+#define VULKAN_RHI_SAFE_CALL(Result)   \
+	do {                               \
+		if ((Result) != VK_SUCCESS) {} \
+	} while (0)
