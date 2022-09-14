@@ -128,6 +128,9 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 	VulkanShader* fragmentShader =
 		static_cast<VulkanShader*>(info.fragmentShader.get());
 
+	shaders.push_back(info.vertexShader);
+	shaders.push_back(info.fragmentShader);
+
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType =
 		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

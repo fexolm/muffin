@@ -13,4 +13,4 @@ add_subdirectory(thirdparty)
 
 add_executable(main main.cpp stb_image.cpp)
 
-target_link_libraries(main VulkanRHI)
+target_link_libraries(main muffin VulkanRHI)

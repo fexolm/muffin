@@ -1,15 +1,14 @@
 #pragma once
 
-#include "muffin/rhi/RHI.h"
 #include "VulkanDevice.h"
 #include "VulkanRHI.h"
 #include "VulkanShader.h"
+#include "muffin/rhi/RHI.h"
 
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan.h>
-
 
 const int FRAMES_IN_FLIGHT = 3;
 
@@ -36,4 +35,5 @@ private:
 	VkPipeline pipelineHandle;
 
 	std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+	std::vector<RHIShaderRef> shaders;
 };
