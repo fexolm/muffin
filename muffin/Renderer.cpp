@@ -1,7 +1,10 @@
 #include "Renderer.h"
 
 Renderer::Renderer(RHIDriverRef driver)
-	: driver(driver) {}
+	: driver(driver)
+{
+	driver->InitImGui();
+}
 
 void Renderer::Enqueue(RenderObjectRef obj)
 {
@@ -19,6 +22,7 @@ void Renderer::Render()
 		obj->Draw(commandList);
 	}
 
+	commandList->DrawImGui();
 	commandList->EndRenderPass();
 	commandList->End();
 	driver->Submit(commandList);

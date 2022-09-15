@@ -58,6 +58,8 @@ public:
 
 	virtual void EndFrame() override;
 
+    virtual void InitImGui() override;
+
 	VulkanRenderPassRef createRenderPass(int imgIdx);
 
 	VkFramebuffer createFramebuffer(VulkanRenderPassRef renderPass, const VulkanRenderTarget& renderTarget);

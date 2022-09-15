@@ -1,6 +1,9 @@
 #include "VulkanCommandList.h"
 #include "VulkanBuffer.h"
 
+#include <imgui.h>
+#include <imgui_impl_vulkan.h>
+
 VulkanCommandList::VulkanCommandList(VulkanDeviceRef device, VulkanCommandPoolRef commandPool, VkCommandBuffer commandBuffer, class VulkanRHI* rhi)
 	: device(device), commandPool(commandPool), commandBuffer(commandBuffer), rhi(rhi)
 {
@@ -159,4 +162,9 @@ void VulkanCommandList::BindDescriptorSet(const RHIGraphicsPipelineRef& pipeline
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->LayoutHandle(), binding, 1, descriptorSets, 0, nullptr);
 
 	ownedResources.emplace_back(descriptorSet);
+}
+
+void VulkanCommandList::DrawImGui() {
+    ImDrawData* draw_data = ImGui::GetDrawData();
+    ImGui_ImplVulkan_RenderDrawData(draw_data, commandBuffer);
 }

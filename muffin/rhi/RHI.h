@@ -131,6 +131,8 @@ public:
 	virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
 		uint32_t firstInstance) = 0;
 
+    virtual void DrawImGui() = 0;
+
 	virtual void SetViewport() = 0;
 
 	virtual void SetScissors() = 0;
@@ -166,6 +168,8 @@ public:
 	virtual RHISamplerRef CreateSampler() = 0;
 
 	virtual void CopyBufferToTexture(const RHIBufferRef& buf, RHITextureRef& image, uint32_t width, uint32_t height) = 0;
+
+    virtual void InitImGui() = 0;
 };
 
 using RHIDriverRef = std::shared_ptr<RHIDriver>;

@@ -24,6 +24,8 @@ struct VulkanCommandList : public RHICommandList
 	virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
 		uint32_t firstInstance) override;
 
+    virtual void DrawImGui() override;
+    
 	virtual void SetViewport() override;
 
 	virtual void SetScissors() override;
@@ -53,3 +55,5 @@ struct VulkanCommandList : public RHICommandList
 
 	RHIGraphicsPipelineRef currentPipeline;
 };
+
+using VulkanCommandListRef = std::shared_ptr<VulkanCommandList>;
