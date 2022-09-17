@@ -282,8 +282,11 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 		bindings[set].insert(bindings[set].end(), b.begin(), b.end());
 	}
 
-	params.merge(vertexShader->params);
-	params.merge(fragmentShader->params);
+    auto vertexParams = vertexShader->params;
+    auto fragmentParams = fragmentShader->params;
+
+	params.merge(vertexParams);
+	params.merge(fragmentParams);
 
 	for (auto& [set, b] : bindings) {
 		descriptorSetLayouts.push_back(

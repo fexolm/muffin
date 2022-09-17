@@ -64,16 +64,17 @@ void VulkanCommandList::DrawIndexed(uint32_t indexCount, uint32_t instanceCount,
 
 void VulkanCommandList::BindPipeline(const RHIGraphicsPipelineRef& pipeline)
 {
-	VulkanGraphicsPipeline* vkPipeline = static_cast<VulkanGraphicsPipeline*>(pipeline.get());
-
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->PipelineHandle());
-
-	for (int i = 0; i < currentDescriptorSets.size(); i++) {
+    for (int i = 0; i < currentDescriptorSets.size(); i++) {
 		BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
 	}
 
-	currentPipeline = pipeline;
 	currentDescriptorSets.clear();
+
+	VulkanGraphicsPipeline* vkPipeline = static_cast<VulkanGraphicsPipeline*>(pipeline.get());
+
+	currentPipeline = pipeline;
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->PipelineHandle());
 
 	for (int i = 0; i < vkPipeline->DescriptorLayouts().size(); i++) {
 		VulkanDescriptorSetRef descriptorSet = rhi->CreateDescriptorSet(pipeline, i);

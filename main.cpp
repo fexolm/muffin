@@ -4,6 +4,7 @@
 #include "muffin/Renderer.h"
 #include "muffin/rhi/RHI.h"
 #include "muffin/rhi/vulkan/RHI.h"
+#include "muffin/Scene.h"
 
 #include <chrono>
 #include <fstream>
@@ -42,12 +43,29 @@ static std::vector<uint32_t> readFile(const std::string& filename)
 	return buffer;
 }
 
+void DrawGUI(Scene &scene) {
+    static float f = 0.0f;
+    static int counter = 0;
+
+    ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+
+    for(RenderObjectRef obj: scene.GetObjects()) {
+        if(ImGui::Button(obj->Name().c_str())) {
+            glm::mat4 transform = obj->GetTransform();
+            obj->SetTransform(glm::rotate(transform, glm::radians(15.f), glm::vec3(0, 0, 1)));
+        }
+    }
+    
+    ImGui::End();
+}
+
 int main()
 {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    ImGui::StyleColorsDark();
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	(void)io;
+	ImGui::StyleColorsDark();
 
 	auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -103,12 +121,30 @@ int main()
 
 	MaterialRef material = Material::Create(rhi, vert, frag, texture);
 
-	RenderObjectRef renderObject = RenderObject::Create(mesh, material);
+	MaterialRef material2 = Material::Create(rhi, vert, frag, texture);
+
+	RenderObjectRef obj1 = RenderObject::Create("Object1", mesh, material);
+	RenderObjectRef obj2 = RenderObject::Create("Object2", mesh, material2);
+
+	glm::mat4 obj1Transform = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 0));
+	glm::mat4 obj2Transform = glm::translate(glm::mat4(1.0f), glm::vec3(-2, 0, 0));
 
 	bool exit = false;
-    
-    bool show_demo_window = true;
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+	bool show_demo_window = true;
+	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+	ubo.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
+	ubo.proj[1][1] *= -1;
+
+    obj1->SetTransform(obj1Transform);
+    obj2->SetTransform(obj2Transform);
+
+    Scene scene;
+
+    scene.AddObject(obj1);
+    scene.AddObject(obj2);
 
 	while (!exit) {
 		SDL_Event e;
@@ -123,51 +159,20 @@ int main()
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
+		renderer.Enqueue(obj1);
+		renderer.Enqueue(obj2);
 
-		renderObject->UpdateUBO(ubo);
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
+		ImGui::NewFrame();
 
-		renderer.Enqueue(renderObject);
+        DrawGUI(scene);
 
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Another Window", &show_demo_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
-        }
-
-        ImGui::Begin("Another Window", &show_demo_window);
-        ImGui::Text("Hello from another window!");
-        if (ImGui::Button("Close Me"))
-            show_demo_window = false;
-        ImGui::End();
-
-        ImGui::Render();
+		ImGui::Render();
 
 		renderer.Render();
 	}
 	rhi->WaitIdle();
-    ImGui_ImplVulkan_Shutdown();
+	ImGui_ImplVulkan_Shutdown();
 	return 0;
 }
