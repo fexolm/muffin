@@ -24,11 +24,9 @@ struct VulkanCommandList : public RHICommandList
 	virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
 		uint32_t firstInstance) override;
 
-    virtual void DrawImGui() override;
-    
-	virtual void SetViewport() override;
+	virtual void SetViewport(float offsetX, float offsetY, float width, float height) override;
 
-	virtual void SetScissors() override;
+	virtual void SetScissors(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height) override;
 
 	virtual void EndRenderPass() override;
 

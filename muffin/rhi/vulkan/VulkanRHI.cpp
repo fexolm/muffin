@@ -5,7 +5,6 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
-#include <imgui_impl_vulkan.h>
 #include <limits>
 #include <spirv_cross/spirv_cross.hpp>
 
@@ -650,6 +649,8 @@ uint32_t getTypeSize(VertexElementType type)
 			return 12;
 		case VertexElementType::Float4:
 			return 16;
+        case VertexElementType::Color:
+            return 4;
 		default:
 			throw std::runtime_error("Unsuported type");
 	}
@@ -668,7 +669,7 @@ VertexElementType spirvToVertexElementType(spirv_cross::SPIRType type)
 			return VertexElementType::Float3;
 		}
 		if (type.vecsize == 4) {
-			return VertexElementType::Float4;
+			return VertexElementType::Color;
 		}
 	}
 	return VertexElementType::None;
@@ -950,35 +951,4 @@ VulkanRHI::~VulkanRHI()
 	vkDestroySwapchainKHR(device->Device(), swapchain, nullptr);
 
 	vkDestroySurfaceKHR(instance->Instance(), surface, nullptr);
-}
-
-void VulkanRHI::InitImGui()
-{
-    ImGui_ImplVulkan_InitInfo initInfo = {};
-    initInfo.Instance = instance->Instance();
-    initInfo.PhysicalDevice = device->PhysicalDevice();
-    initInfo.Device = device->Device();
-    initInfo.QueueFamily = device->GraphicsFamily();
-    initInfo.Queue = device->GraphicsQueue();
-    initInfo.DescriptorPool = descriptorPool->Handle();
-    initInfo.Subpass = 0;
-    initInfo.MinImageCount = 2;
-    initInfo.ImageCount = MAX_FRAMES_IN_FLIGHT;
-    initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    initInfo.Allocator = nullptr;
-
-    VulkanRenderPassRef renderPass = createRenderPass(0);
-    ImGui_ImplVulkan_Init(&initInfo, renderPass->RenderPass());
-
-    RHICommandListRef commandList = CreateCommandList();
-
-    VulkanCommandList *vulkanCommandList = static_cast<VulkanCommandList *>(commandList.get());
-
-    commandList->Begin();
-
-    ImGui_ImplVulkan_CreateFontsTexture(vulkanCommandList->commandBuffer);
-    commandList->End();
-    SubmitAndWaitIdle(commandList);
-
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
 }

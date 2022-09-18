@@ -1,9 +1,6 @@
 #include "VulkanCommandList.h"
 #include "VulkanBuffer.h"
 
-#include <imgui.h>
-#include <imgui_impl_vulkan.h>
-
 VulkanCommandList::VulkanCommandList(VulkanDeviceRef device, VulkanCommandPoolRef commandPool, VkCommandBuffer commandBuffer, class VulkanRHI* rhi)
 	: device(device), commandPool(commandPool), commandBuffer(commandBuffer), rhi(rhi)
 {
@@ -64,7 +61,7 @@ void VulkanCommandList::DrawIndexed(uint32_t indexCount, uint32_t instanceCount,
 
 void VulkanCommandList::BindPipeline(const RHIGraphicsPipelineRef& pipeline)
 {
-    for (int i = 0; i < currentDescriptorSets.size(); i++) {
+	for (int i = 0; i < currentDescriptorSets.size(); i++) {
 		BindDescriptorSet(currentPipeline, currentDescriptorSets[i], i);
 	}
 
@@ -83,27 +80,24 @@ void VulkanCommandList::BindPipeline(const RHIGraphicsPipelineRef& pipeline)
 	}
 }
 
-void VulkanCommandList::SetViewport()
+void VulkanCommandList::SetViewport(float offsetX, float offsetY, float width, float height)
 {
-	VkExtent2D extent = rhi->getExtent();
 	VkViewport viewport;
-	viewport.x = 0.f;
-	viewport.y = 0.f;
-	viewport.width = (float)extent.width;
-	viewport.height = (float)extent.height;
+	viewport.x = offsetX;
+	viewport.y = offsetY;
+	viewport.width = width;
+	viewport.height = height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 
 	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 }
 
-void VulkanCommandList::SetScissors()
+void VulkanCommandList::SetScissors(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
 {
-	VkExtent2D extent = rhi->getExtent();
-
 	VkRect2D scissor;
-	scissor.offset = { 0, 0 };
-	scissor.extent = extent;
+	scissor.offset = { offsetX, offsetY };
+	scissor.extent = { width, height };
 
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 }
@@ -163,9 +157,4 @@ void VulkanCommandList::BindDescriptorSet(const RHIGraphicsPipelineRef& pipeline
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->LayoutHandle(), binding, 1, descriptorSets, 0, nullptr);
 
 	ownedResources.emplace_back(descriptorSet);
-}
-
-void VulkanCommandList::DrawImGui() {
-    ImDrawData* draw_data = ImGui::GetDrawData();
-    ImGui_ImplVulkan_RenderDrawData(draw_data, commandBuffer);
 }

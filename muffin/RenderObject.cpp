@@ -16,8 +16,6 @@ RenderObject::RenderObject(const std::string &name, MeshRef mesh, MaterialRef ma
 void RenderObject::Draw(RHICommandListRef commandList)
 {
 	material->Bind(commandList);
-	commandList->SetViewport();
-	commandList->SetScissors();
 	mesh->Draw(commandList);
 }
 

@@ -22,4 +22,4 @@ add_library(
     RHI.cpp
     )
 target_include_directories(VulkanRHI PUBLIC ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(VulkanRHI Vulkan::Vulkan SDL2::SDL2 spirv-cross-cpp imgui)
+target_link_libraries(VulkanRHI Vulkan::Vulkan SDL2::SDL2 spirv-cross-cpp imgui editor)

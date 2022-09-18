@@ -162,7 +162,6 @@ int main()
 		renderer.Enqueue(obj1);
 		renderer.Enqueue(obj2);
 
-		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
@@ -173,6 +172,5 @@ int main()
 		renderer.Render();
 	}
 	rhi->WaitIdle();
-	ImGui_ImplVulkan_Shutdown();
 	return 0;
 }

@@ -2,7 +2,7 @@
 
 #include "RenderObject.h"
 #include "muffin/rhi/RHI.h"
-
+#include "muffin/editor/ImGuiRenderer.h"
 #include <vector>
 
 class Renderer
@@ -17,4 +17,5 @@ public:
 private:
 	RHIDriverRef driver;
 	std::vector<RenderObjectRef> renderQueue;
+    std::shared_ptr<ImGuiRenderer> gui;
 };

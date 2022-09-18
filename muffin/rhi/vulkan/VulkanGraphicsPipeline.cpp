@@ -212,8 +212,26 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 	rasterizer.rasterizerDiscardEnable = false;
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizer.lineWidth = 1.0f;
-	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	switch (info.rasterizer.cullMode) {
+		case CullMode::None:
+			rasterizer.cullMode = VK_CULL_MODE_NONE;
+			break;
+		case CullMode::Back:
+			rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+			break;
+		case CullMode::Front:
+			rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
+			break;
+	}
+
+	switch (info.rasterizer.faceOrientation) {
+		case FaceOrientation::Clockwise:
+			rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+			break;
+		case FaceOrientation::CounterClockwise:
+			rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			break;
+	}
 	rasterizer.depthBiasEnable = false;
 	rasterizer.depthBiasConstantFactor = 0.f;
 	rasterizer.depthBiasClamp = 0.f;
@@ -236,13 +254,14 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
 	colorBlendAttachment.colorWriteMask =
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-	colorBlendAttachment.blendEnable = false;
-	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.blendEnable = true;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
 	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
 	VkPipelineColorBlendStateCreateInfo colorBlending{};
 	colorBlending.sType =
@@ -261,7 +280,7 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 	VkPipelineDepthStencilStateCreateInfo depthStencil{};
 	depthStencil.sType =
 		VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthStencil.depthTestEnable = true;
+	depthStencil.depthTestEnable = info.depthStencil.depthTestEnable;
 	depthStencil.depthWriteEnable = true;
 	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
 	depthStencil.depthBoundsTestEnable = false;
@@ -282,8 +301,8 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
 		bindings[set].insert(bindings[set].end(), b.begin(), b.end());
 	}
 
-    auto vertexParams = vertexShader->params;
-    auto fragmentParams = fragmentShader->params;
+	auto vertexParams = vertexShader->params;
+	auto fragmentParams = fragmentShader->params;
 
 	params.merge(vertexParams);
 	params.merge(fragmentParams);

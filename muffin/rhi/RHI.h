@@ -2,8 +2,8 @@
 
 #include <map>
 #include <memory>
-#include <vulkan/vulkan.h>
 #include <vector>
+#include <vulkan/vulkan.h>
 
 enum class BufferUsage
 {
@@ -98,10 +98,36 @@ class RHIRenderTarget
 
 using RHIRenderTargetRef = std::shared_ptr<RHIRenderTarget>;
 
+struct DepthStencilInfo
+{
+	bool depthTestEnable{ false };
+};
+
+enum class CullMode
+{
+	None,
+	Back,
+	Front,
+};
+
+enum class FaceOrientation
+{
+	Clockwise,
+	CounterClockwise,
+};
+
+struct RasterizerInfo
+{
+	CullMode cullMode{ CullMode::Back };
+	FaceOrientation faceOrientation{ FaceOrientation::CounterClockwise };
+};
+
 struct GraphicsPipelineCreateInfo
 {
 	RHIShaderRef vertexShader;
 	RHIShaderRef fragmentShader;
+	DepthStencilInfo depthStencil;
+	RasterizerInfo rasterizer;
 };
 
 using RHIBufferRef = std::shared_ptr<RHIBuffer>;
@@ -131,11 +157,9 @@ public:
 	virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
 		uint32_t firstInstance) = 0;
 
-    virtual void DrawImGui() = 0;
+	virtual void SetViewport(float offsetX, float offsetY, float width, float height) = 0;
 
-	virtual void SetViewport() = 0;
-
-	virtual void SetScissors() = 0;
+	virtual void SetScissors(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height) = 0;
 };
 
 using RHICommandListRef = std::shared_ptr<RHICommandList>;
@@ -168,8 +192,6 @@ public:
 	virtual RHISamplerRef CreateSampler() = 0;
 
 	virtual void CopyBufferToTexture(const RHIBufferRef& buf, RHITextureRef& image, uint32_t width, uint32_t height) = 0;
-
-    virtual void InitImGui() = 0;
 };
 
 using RHIDriverRef = std::shared_ptr<RHIDriver>;

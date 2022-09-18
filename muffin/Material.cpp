@@ -6,6 +6,9 @@ Material::Material(RHIDriverRef driver, RHIShaderRef vertexShader, RHIShaderRef 
 	GraphicsPipelineCreateInfo createInfo;
 	createInfo.vertexShader = vertexShader;
 	createInfo.fragmentShader = fragmentShader;
+	createInfo.depthStencil.depthTestEnable = true;
+	createInfo.rasterizer.cullMode = CullMode::Back;
+	createInfo.rasterizer.faceOrientation = FaceOrientation::CounterClockwise;
 
 	graphicsPipeline = driver->CreateGraphicsPipeline(createInfo);
 	sampler = driver->CreateSampler();
