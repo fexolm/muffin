@@ -13,7 +13,7 @@ RenderObject::RenderObject(const std::string &name, MeshRef mesh, MaterialRef ma
 {
 }
 
-void RenderObject::Draw(RHICommandListRef commandList)
+void RenderObject::Render(RHICommandListRef commandList)
 {
 	material->Bind(commandList);
 	mesh->Draw(commandList);

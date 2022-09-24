@@ -4,6 +4,7 @@
 #include "muffin/Renderer.h"
 #include "muffin/rhi/RHI.h"
 #include "muffin/rhi/vulkan/RHI.h"
+#include "muffin/editor/ImGuiRenderer.h"
 #include "muffin/Scene.h"
 
 #include <chrono>
@@ -146,6 +147,8 @@ int main()
     scene.AddObject(obj1);
     scene.AddObject(obj2);
 
+	auto gui = std::make_shared<ImGuiRenderer>(rhi);
+
 	while (!exit) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
@@ -161,6 +164,7 @@ int main()
 
 		renderer.Enqueue(obj1);
 		renderer.Enqueue(obj2);
+		renderer.Enqueue(gui);
 
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();

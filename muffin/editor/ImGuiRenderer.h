@@ -1,6 +1,7 @@
 #pragma once
 
 #include "muffin/rhi/RHI.h"
+#include "muffin/Renderable.h"
 
 #include <fstream>
 #include <glm/glm.hpp>
@@ -8,12 +9,12 @@
 #include <stdexcept>
 #include <vector>
 
-class ImGuiRenderer
+class ImGuiRenderer : public Renderable
 {
 public:
 	ImGuiRenderer(RHIDriverRef driver);
 
-	void Render(RHICommandListRef commandList);
+	virtual void Render(RHICommandListRef commandList) override;
 
 private:
 	RHIDriverRef driver;

@@ -3,10 +3,9 @@
 Renderer::Renderer(RHIDriverRef driver)
 	: driver(driver)
 {
-    gui = std::make_shared<ImGuiRenderer>(driver);
 }
 
-void Renderer::Enqueue(RenderObjectRef obj)
+void Renderer::Enqueue(RenderableRef obj)
 {
 	renderQueue.push_back(obj);
 }
@@ -17,14 +16,13 @@ void Renderer::Render()
 	RHIRenderTargetRef renderTarget = driver->BeginFrame();
 	commandList->Begin();
 	commandList->BeginRenderPass(renderTarget);
-	commandList->SetViewport(200,  200, 800, 600);
-	commandList->SetScissors(200,  200, 800, 800);
 
-	for (RenderObjectRef& obj : renderQueue) {
-		obj->Draw(commandList);
+	for (RenderableRef& obj : renderQueue) {
+		commandList->SetViewport(200,  200, 800, 600);
+		commandList->SetScissors(200,  200, 800, 600);
+		obj->Render(commandList);
 	}
 
-	gui->Render(commandList);
 	commandList->EndRenderPass();
 	commandList->End();
 	driver->Submit(commandList);

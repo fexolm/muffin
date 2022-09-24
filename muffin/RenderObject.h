@@ -2,6 +2,7 @@
 
 #include "Material.h"
 #include "Mesh.h"
+#include "Renderable.h"
 #include "muffin/rhi/RHI.h"
 
 #include <memory>
@@ -11,24 +12,24 @@ class RenderObject;
 
 using RenderObjectRef = std::shared_ptr<RenderObject>;
 
-class RenderObject
+class RenderObject : public Renderable
 {
 public:
-	static RenderObjectRef Create(const std::string &name, MeshRef mesh, MaterialRef material);
+	static RenderObjectRef Create(const std::string& name, MeshRef mesh, MaterialRef material);
 
-	void Draw(RHICommandListRef commandList);
+	virtual void Render(RHICommandListRef commandList) override;
 
-	void SetTransform(const glm::mat4 &newTransform);
+	void SetTransform(const glm::mat4& newTransform);
 
-	const glm::mat4 &GetTransform();
+	const glm::mat4& GetTransform();
 
-    const std::string &Name();
+	const std::string& Name();
 
 private:
-	RenderObject(const std::string &name, MeshRef mesh, MaterialRef material);
+	RenderObject(const std::string& name, MeshRef mesh, MaterialRef material);
 
-    std::string name;
+	std::string name;
 	MeshRef mesh;
 	MaterialRef material;
-    glm::mat4 transform;
+	glm::mat4 transform;
 };

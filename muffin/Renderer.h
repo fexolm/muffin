@@ -1,8 +1,7 @@
 #pragma once
 
-#include "RenderObject.h"
+#include "Renderable.h"
 #include "muffin/rhi/RHI.h"
-#include "muffin/editor/ImGuiRenderer.h"
 #include <vector>
 
 class Renderer
@@ -10,12 +9,11 @@ class Renderer
 public:
 	Renderer(RHIDriverRef driver);
 
-	void Enqueue(RenderObjectRef obj);
+	void Enqueue(RenderableRef obj);
 
 	void Render();
 
 private:
 	RHIDriverRef driver;
-	std::vector<RenderObjectRef> renderQueue;
-    std::shared_ptr<ImGuiRenderer> gui;
+	std::vector<RenderableRef> renderQueue;
 };
