@@ -1,11 +1,11 @@
-#include "muffin/Material.h"
-#include "muffin/Mesh.h"
-#include "muffin/RenderObject.h"
-#include "muffin/Renderer.h"
-#include "muffin/rhi/RHI.h"
-#include "muffin/rhi/vulkan/RHI.h"
 #include "muffin/editor/ImGuiRenderer.h"
-#include "muffin/Scene.h"
+#include "muffin/graphics/Material.h"
+#include "muffin/graphics/Mesh.h"
+#include "muffin/graphics/RenderObject.h"
+#include "muffin/graphics/Renderer.h"
+#include "muffin/graphics/Scene.h"
+#include "muffin/graphics/rhi/RHI.h"
+#include "muffin/graphics/rhi/vulkan/RHI.h"
 
 #include <chrono>
 #include <fstream>
@@ -44,20 +44,21 @@ static std::vector<uint32_t> readFile(const std::string& filename)
 	return buffer;
 }
 
-void DrawGUI(Scene &scene) {
-    static float f = 0.0f;
-    static int counter = 0;
+void DrawGUI(Scene& scene)
+{
+	static float f = 0.0f;
+	static int counter = 0;
 
-    ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+	ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
 
-    for(RenderObjectRef obj: scene.GetObjects()) {
-        if(ImGui::Button(obj->Name().c_str())) {
-            glm::mat4 transform = obj->GetTransform();
-            obj->SetTransform(glm::rotate(transform, glm::radians(15.f), glm::vec3(0, 0, 1)));
-        }
-    }
-    
-    ImGui::End();
+	for (RenderObjectRef obj : scene.GetObjects()) {
+		if (ImGui::Button(obj->Name().c_str())) {
+			glm::mat4 transform = obj->GetTransform();
+			obj->SetTransform(glm::rotate(transform, glm::radians(15.f), glm::vec3(0, 0, 1)));
+		}
+	}
+
+	ImGui::End();
 }
 
 int main()
@@ -139,13 +140,13 @@ int main()
 	ubo.proj = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 10.0f);
 	ubo.proj[1][1] *= -1;
 
-    obj1->SetTransform(obj1Transform);
-    obj2->SetTransform(obj2Transform);
+	obj1->SetTransform(obj1Transform);
+	obj2->SetTransform(obj2Transform);
 
-    Scene scene;
+	Scene scene;
 
-    scene.AddObject(obj1);
-    scene.AddObject(obj2);
+	scene.AddObject(obj1);
+	scene.AddObject(obj2);
 
 	auto gui = std::make_shared<ImGuiRenderer>(rhi);
 
@@ -169,7 +170,7 @@ int main()
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-        DrawGUI(scene);
+		DrawGUI(scene);
 
 		ImGui::Render();
 

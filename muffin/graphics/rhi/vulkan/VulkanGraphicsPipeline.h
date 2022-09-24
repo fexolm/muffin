@@ -3,7 +3,7 @@
 #include "VulkanDevice.h"
 #include "VulkanRHI.h"
 #include "VulkanShader.h"
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 
 #include <string>
 #include <unordered_map>

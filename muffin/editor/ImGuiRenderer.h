@@ -1,7 +1,7 @@
 #pragma once
 
-#include "muffin/rhi/RHI.h"
-#include "muffin/Renderable.h"
+#include "muffin/graphics/rhi/RHI.h"
+#include "muffin/graphics/Renderable.h"
 
 #include <fstream>
 #include <glm/glm.hpp>

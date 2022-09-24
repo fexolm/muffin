@@ -1,6 +1,6 @@
 #pragma once
 
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 
 #include <vulkan/vulkan.h>
 

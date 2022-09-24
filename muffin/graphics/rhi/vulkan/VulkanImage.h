@@ -1,7 +1,7 @@
 #pragma once
 
 #include "VulkanDevice.h"
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 
 #include <vulkan/vulkan.h>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 #include "Shared.h"
 #include "VulkanCommandList.h"
 #include "VulkanCommandPool.h"

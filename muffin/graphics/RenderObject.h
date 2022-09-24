@@ -3,7 +3,7 @@
 #include "Material.h"
 #include "Mesh.h"
 #include "Renderable.h"
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 
 #include <memory>
 #include <string>

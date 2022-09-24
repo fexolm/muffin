@@ -1,5 +1,5 @@
 #pragma once
 
-#include "muffin/rhi/RHI.h"
+#include "muffin/graphics/rhi/RHI.h"
 
 RHIDriverRef CreateVulkanRhi();
