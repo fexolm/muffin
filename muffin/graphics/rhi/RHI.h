@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
+#include <string>
 
 enum class BufferUsage
 {
